@@ -1,10 +1,12 @@
 from __future__ import print_function, division
 import numpy as np
 import pickle
+import socket
 
 
 OVTK_StimulationLabel_Base = 0x00008100
 commands = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+
 
 # calculate score for each stimulus and select the target
 def select_target(predictions, events):
@@ -15,7 +17,7 @@ def select_target(predictions, events):
 
     for i in range(1, len(values) + 1):
         item_index = np.where(array == i)
-        cl_item_output = np.array(predictions)[item_index]         
+        cl_item_output = np.array(predictions)[item_index]          
         score = np.sum(cl_item_output == 0) / len(cl_item_output)
         scores.append(score)
         
@@ -38,6 +40,10 @@ class Predictor(OVBox):
         self.predictions = []
         self.events = []
         self.trials_count = 0
+        self.feedback_data = 0
+        self.hostname = '127.0.0.1'
+        self.feedback_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.feedback_port = 12345
 
     def initialize(self):
         # Load model
@@ -56,7 +62,6 @@ class Predictor(OVBox):
                     feature_vector = np.array(x).reshape(1, -1)
                     self.predictions.append(self.model.predict(feature_vector))
 
-
         if self.input[1]:
             chunk = self.input[1].pop()
             if type(chunk) == OVStimulationSet:
@@ -64,6 +69,7 @@ class Predictor(OVBox):
                     if chunk:
                         stim = chunk.pop()
                         
+                        # 
                         if stim.identifier ==  OpenViBE_stimulation['OVTK_StimulationId_TrialStart']:
                             self.events = []
                             self.predictions = []
@@ -76,16 +82,8 @@ class Predictor(OVBox):
                         if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']:
                             # make final decision
                             command = select_target(self.predictions, self.events)
-                            print('The command is:', command) 
-
-                        if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop']:
-                            # output a stop stimulation to Stop scenario
-                            stimSet = OVStimulationSet(self.getCurrentTime(),
-                                                        self.getCurrentTime())    
-                            stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 
-                                                            self.getCurrentTime(), 
-                                                            self.getCurrentTime()))
-                            self.output[0].append(stimSet)             
+                            self.feedback_socket.sendto(command, (self.hostname, self.feedback_port))
+                            print('The command is:', command)                          
                      
                     
         
