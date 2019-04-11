@@ -89,6 +89,7 @@ class SSVEPpredictor(OVBox):
                             print('Trial Stop... sending feedback')
                             # do feedback
                             if self.do_feedback:
+                                print('Sending as feedback: ', self.command)
                                 self.feedback_socket.sendto(self.command, (self.hostname, self.feedback_port))
                                 self.do_feedback = False
                           
@@ -102,9 +103,10 @@ class SSVEPpredictor(OVBox):
                     epoch = np.array(buffer).reshape(channels, samples)
                     r = apply_cca(epoch, self.references)
                     command = predict(r)
-                    self.command = str(self.frequencies[command+1])
+                    # self.command = str(self.frequencies[command+1])
+                    self.command = str(command+1)
                     self.do_feedback = True
-                    print('Frequency detected %s Hz' %(self.command))  
+                    print('Frequency detected %s Hz' %(self.frequencies[command+1]))  
                     
 
 
