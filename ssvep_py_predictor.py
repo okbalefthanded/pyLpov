@@ -5,6 +5,8 @@ from scipy import sqrt
 import numpy as np
 import pickle
 
+OVTK_StimulationLabel_Base = 0x00008100
+
 def cca(X,Y):
     if X.shape[1] != Y.shape[1]:
         raise Exception('unable to apply CCA, X and Y have different dimensions')
@@ -43,11 +45,12 @@ class SSVEPpredictor(OVBox):
         self.predictions = []
         self.events = []
         self.trials_count = 0
-        self.frequencies = ['idle', 6.66, 7.5, 8.57, 10]
+        self.frequencies = ['idle', 7, 11, 9, 13]
         self.num_harmonics = 0
         self.epoch_duration = 0
         self.fs = 512
-        self.references = []      
+        self.references = []
+        self.target_stimulations = []     
 
 
     def initialize(self):
@@ -75,6 +78,23 @@ class SSVEPpredictor(OVBox):
                         stim = chunk.pop()
                         print('Received Marker: ', stim.identifier, 'stamped at', stim.date, 's')
 
+                        if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']:
+                            self.trials_count += 1
+
+                        if stim.identifier > OVTK_StimulationLabel_Base and stim.identifier <= OVTK_StimulationLabel_Base+len(self.frequencies):
+                            self.target_stimulations.append(stim.identifier - OVTK_StimulationLabel_Base)
+                            # print("target is: ", self.target_stimulations[-1])
+
+                        if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop']:
+                            # calculate % of correct detections
+                            targets = np.array(self.target_stimulations)
+                            predictions = np.array(self.predictions)
+                            accuracy = (np.sum(targets == predictions) / len(self.target_stimulations)) * 100
+                            print("Accuracy :", accuracy)
+                            # print("Targets: ", self.target_stimulations)
+                            # print("Predictions: ", self.predictions)
+                        
+
         if self.input[0]:
             buffer = self.input[0].pop()
             if type(buffer) == OVSignalBuffer:
@@ -84,8 +104,12 @@ class SSVEPpredictor(OVBox):
                     epoch = np.array(buffer).reshape(channels, samples)
                     r = apply_cca(epoch, self.references)
                     command = predict(r)
-                    print('Frequency detected %s Hz' %(self.frequencies[command+1]))  
-                    
+                    self.predictions.append(command+1)
+                    print('Frequency detected %s Hz' %(self.frequencies[command+1]))
+                    if command == self.target_stimulations[-1]:
+                        print("Correct!")  
+                    else:
+                        print("Incorrect!")          
 
 
 

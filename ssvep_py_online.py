@@ -102,13 +102,7 @@ class SSVEPpredictor(OVBox):
                         if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']:
                             print('Trial Stop... ')
                             self.trial_ended = True
-                            # do feedback
-                            # while(self.do_feedback):
-                                # print('Sending as feedback: ', self.command)
-                                # self.feedback_socket.sendto(self.command, (self.hostname, self.feedback_port))
-                                # print('time of sending: ', self.getCurrentTime())
-                                # logging.info('feedback sent')
-                                # self.do_feedback = False                          
+                             
 
         if self.input[0]:
             buffer = self.input[0].pop()
