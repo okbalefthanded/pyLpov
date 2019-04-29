@@ -1,5 +1,5 @@
 from __future__ import print_function, division
-from sklearn.cross_decomposition import CCA
+from sklearn.metrics import confusion_matrix
 from scipy.linalg import eig
 from scipy import sqrt
 import numpy as np
@@ -45,7 +45,8 @@ class SSVEPpredictor(OVBox):
         self.predictions = []
         self.events = []
         self.trials_count = 0
-        self.frequencies = ['idle', 7, 11, 9, 13]
+        self.frequencies = ['idle', 7, 9, 11, 13]
+        # self.frequencies = ['idle', 7.5, 8.57, 10, 12]
         self.num_harmonics = 0
         self.epoch_duration = 0
         self.fs = 512
@@ -83,7 +84,7 @@ class SSVEPpredictor(OVBox):
 
                         if stim.identifier > OVTK_StimulationLabel_Base and stim.identifier <= OVTK_StimulationLabel_Base+len(self.frequencies):
                             self.target_stimulations.append(stim.identifier - OVTK_StimulationLabel_Base)
-                            # print("target is: ", self.target_stimulations[-1])
+                            print("target is: ", self.frequencies[self.target_stimulations[-1]])
 
                         if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop']:
                             # calculate % of correct detections
@@ -91,6 +92,8 @@ class SSVEPpredictor(OVBox):
                             predictions = np.array(self.predictions)
                             accuracy = (np.sum(targets == predictions) / len(self.target_stimulations)) * 100
                             print("Accuracy :", accuracy)
+                            cm = confusion_matrix(targets, predictions)
+                            print('Confusion matrix: ', cm)
                             # print("Targets: ", self.target_stimulations)
                             # print("Predictions: ", self.predictions)
                         
@@ -103,9 +106,9 @@ class SSVEPpredictor(OVBox):
                     channels = int(len(buffer) / samples)
                     epoch = np.array(buffer).reshape(channels, samples)
                     r = apply_cca(epoch, self.references)
-                    command = predict(r)
-                    self.predictions.append(command+1)
-                    print('Frequency detected %s Hz' %(self.frequencies[command+1]))
+                    command = predict(r) + 1 # temporarly, since we're using a sync mode
+                    self.predictions.append(command)
+                    print('Frequency detected %s Hz' %(self.frequencies[command]))
                     if command == self.target_stimulations[-1]:
                         print("Correct!")  
                     else:
