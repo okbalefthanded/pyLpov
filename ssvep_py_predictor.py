@@ -45,11 +45,12 @@ class SSVEPpredictor(OVBox):
         self.predictions = []
         self.events = []
         self.trials_count = 0
-        self.frequencies = ['idle', 7, 9, 11, 13]
+        self.frequencies = ['idle', 14, 12, 10, 8]
         # self.frequencies = ['idle', 7.5, 8.57, 10, 12]
         self.num_harmonics = 0
         self.epoch_duration = 0
         self.fs = 512
+        self.samples = 0
         self.references = []
         self.target_stimulations = []     
 
@@ -58,14 +59,14 @@ class SSVEPpredictor(OVBox):
         self.epoch_duration = float(self.setting['Epoch_duration'])
         self.num_harmonics = int(self.setting['Harmonics'])
         self.fs = float(self.setting['Sample_rate'])
-        samples = self.epoch_duration * self.fs
-        t = np.arange(0.0, samples) / self.fs
+        self.samples = int(self.epoch_duration * self.fs)
+        t = np.arange(0.0, float(self.samples)) / self.fs
         if self.frequencies[0] == 'idle':
             frequencies = self.frequencies[1:]
         # generate reference signals
         x = [ [np.cos(2*np.pi*f*t*i),np.sin(2*np.pi*f*t*i)] for f in frequencies for i in range(1, self.num_harmonics+1)]
         # self.references = np.array(x).reshape(self.num_harmonics * len(frequencies), int(samples))
-        self.references = np.array(x).reshape(len(frequencies), 2*self.num_harmonics, int(samples))  
+        self.references = np.array(x).reshape(len(frequencies), 2*self.num_harmonics, int(self.samples))  
         
 
     
@@ -102,9 +103,8 @@ class SSVEPpredictor(OVBox):
             buffer = self.input[0].pop()
             if type(buffer) == OVSignalBuffer:
                 if (buffer):
-                    samples = int(self.epoch_duration * self.fs)
-                    channels = int(len(buffer) / samples)
-                    epoch = np.array(buffer).reshape(channels, samples)
+                    channels = int(len(buffer) / self.samples)                    
+                    epoch = np.array(buffer).reshape(channels, self.samples)                    
                     r = apply_cca(epoch, self.references)
                     command = predict(r) + 1 # temporarly, since we're using a sync mode
                     self.predictions.append(command)
