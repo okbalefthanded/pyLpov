@@ -54,8 +54,7 @@ def train(x, y):
     return clf, cv_results
 
 # Save model after training
-def save_model(self, model):
-        filename = self.setting['classifier_path']
+def save_model(filename, model):
         pickle.dump(model, open(filename, 'wb'))
 
 # CCA
@@ -114,6 +113,7 @@ class HybridClassifierTrainer(OVBox):
         self.erp_channels = []
         self.erp_begin = 0
         self.erp_end = 0
+        self.erp_model_path = []
         #
         self.ssvep_x = []
         self.ssvep_y = []
@@ -123,7 +123,7 @@ class HybridClassifierTrainer(OVBox):
         self.ssvep_filterOrder = 6   
         self.ssvep_n_harmonics = 2
         self.ssvep_frequencies = ['idle', 14, 12, 10, 8]
-        self.ssvep_epoch_duration = 4.0
+        self.ssvep_epochDuration = 4.0
         self.ssvep_samples = 0
         self.ssvep_references = []   
         self.ssvep_channels = []   
@@ -145,13 +145,15 @@ class HybridClassifierTrainer(OVBox):
         self.erp_highPass = int(self.setting["ERP High Pass"])
         self.erp_filterOrder = int(self.setting["ERP Filter Order"])
         self.erp_downSample = int(self.setting["Downsample Factor"])
-        self.erp_epochDuration = float(self.setting["ERP Epoch Duration (in sec)"])
+        self.erp_epochDuration = np.ceil(float(self.setting["ERP Epoch Duration (in sec)"]) * self.fs).astype(int)
         self.erp_movingAverage = int(self.setting["ERP Moving Average"])
+        self.erp_model_path = self.setting["ERP Classifier"]
+        self.erp_model = pickle.load(open(self.erp_model_path, 'rb'))
         #
         self.ssvep_lowPass = int(self.setting["SSVEP Low Pass"])
         self.ssvep_highPass = int(self.setting["SSVEP High Pass"])
         self.ssvep_filterOrder = int(self.setting["SSVEP Filter Order"])
-        self.ssvep_epochDuration = float(self.setting["SSVEP Epoch Duration (in sec)"])
+        self.ssvep_epochDuration = float(self.setting["SSVEP Epoch Duration (in sec)"]) 
         self.ssvep_n_harmonics = int(self.setting["SSVEP Harmonics"])
         self.ssvep_samples = int(self.ssvep_epochDuration * self.fs)
         self.ssvep_mode = self.setting["SSVEP Mode"]
@@ -183,7 +185,7 @@ class HybridClassifierTrainer(OVBox):
                 for stimIdx in range(len(chunk)):
                     if chunk:
                         stim = chunk.pop()               
-                        print('Received Marker: ', stim.identifier, 'stamped at', stim.date, 's')
+                        # print('Received Marker: ', stim.identifier, 'stamped at', stim.date, 's')
                         
                         # ERP session
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch):
@@ -202,6 +204,10 @@ class HybridClassifierTrainer(OVBox):
 
                         # SSVEP session
                         if self.switch:
+
+                            if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.ssvep_stims_time):
+                                self.ssvep_begin = stim.date
+
                             if stim.identifier > OVTK_StimulationLabel_Base and stim.identifier <= OVTK_StimulationLabel_Base+len(self.ssvep_frequencies):
                                 self.ssvep_y.append(stim.identifier - OVTK_StimulationLabel_Base)
                                 self.ssvep_stims_time.append(stim.date) 
@@ -210,6 +216,8 @@ class HybridClassifierTrainer(OVBox):
                         if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop']:
                             if(self.ends == 0):
                                 self.erp_end = stim.date
+                            else:
+                                self.ssvep_end = stim.date
                             self.ends += 1
                             self.switch = True                 
                         
@@ -219,25 +227,15 @@ class HybridClassifierTrainer(OVBox):
         # Filter, Epoch and Train
         if self.do_train:
             # Reshape Signal
-            self.signal = np.array(self.signal).reshape(self.channels, self.chunk*self.nChunks).T
-            ## for dev purpose: saving the BOX object
-            # fn = 'mrk'
-            # print(self.erp_stims_time[0])
-            # mrk = self.erp_stims_time
-            # pickle.dump(mrk, open(fn, 'wb'))            
+            self.signal = np.array(self.signal).reshape(self.channels, self.chunk*self.nChunks).T           
+            # 
             self.erp_stims_time = np.floor(np.array(self.erp_stims_time) * self.fs).astype(int)            
             self.ssvep_stims_time = np.floor(np.array(self.ssvep_stims_time) * self.fs).astype(int)
             self.erp_begin = int(np.floor(self.erp_begin * self.fs))
             self.erp_end = int(np.floor(self.erp_end * self.fs))
-            # fn = 'mr'
-            # print(self.erp_stims_time[0])
-            # mr = self.ssvep_stims_time
-            # pickle.dump(mr, open(fn, 'wb')) 
-            # Epoch ERP
-            # sig = np.array(self.signal)            
-            # filename = 'sig'            
-            # pickle.dump(sig, open(filename, 'wb'))          
-            # erp_signal = self.signal[self.erp_stims_time[0,0]:self.ssvep_stims_time[0],:]
+            self.ssvep_begin = int(np.floor(self.ssvep_begin * self.fs))
+            self.ssvep_end = int(np.floor(self.ssvep_end * self.fs))
+            self.ssvep_y = np.array(self.ssvep_y)
             erp_signal = self.signal[self.erp_begin:self.erp_end,:]
             erp_signal = eeg_filter(erp_signal, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)            
             self.signal[self.erp_begin:self.erp_end,:] = erp_signal
@@ -247,15 +245,39 @@ class HybridClassifierTrainer(OVBox):
             erp_epochs = np.array(erp_epochs).transpose((1,2,3,0))
             self.erp_x = eeg_feature(erp_epochs, self.erp_downSample, self.erp_movingAverage)
             self.erp_y = np.array(self.erp_stims, dtype=int)
-            model, scores = train(self.x, self.y) 
+            erp_model, scores = train(self.erp_x, self.erp_y) 
             print("Train Accuracy: %0.2f (+/- %0.2f)" % (scores['train_accuracy'].mean(), scores['train_accuracy'].std() * 2))
             print("Val Accuracy: %0.2f (+/- %0.2f)" % (scores['test_accuracy'].mean(), scores['test_accuracy'].std() * 2))
             print("Train ROC: %0.2f (+/- %0.2f)" % (scores['train_roc_auc'].mean(), scores['train_roc_auc'].std() * 2))
             print("Val ROC: %0.2f (+/- %0.2f)" % (scores['test_roc_auc'].mean(), scores['test_roc_auc'].std() * 2))
+            # SSVEP
+            ssvep_signal = self.signal[self.ssvep_begin:self.ssvep_end,:]
+            ssvep_signal = eeg_filter(ssvep_signal, self.fs, self.ssvep_lowPass, self.ssvep_highPass, self.ssvep_filterOrder)            
+            self.signal[self.ssvep_begin:self.ssvep_end,:] = ssvep_signal
+            ssvep_epochs = eeg_epoch(self.signal, np.array([0, self.ssvep_samples],dtype=int), self.ssvep_stims_time)
+            if self.ssvep_mode == 'sync':                
+                sync_trials = np.where(self.ssvep_y != 1)
+                ssvep_sync_epochs = ssvep_epochs[:,:,sync_trials].squeeze()
+                ssvep_predictions = []
+                for i in range(ssvep_sync_epochs.shape[2]):
+                    ssvep_predictions.append(predict(apply_cca(ssvep_sync_epochs[0:self.ssvep_samples,:,i].transpose((1,0)), self.ssvep_references)) + 1)
+                ntrials = len(ssvep_predictions)
+                ssvep_targets = np.array(self.ssvep_y[sync_trials])
+                ssvep_predictions = np.array(ssvep_predictions)
+                accuracy = (np.sum(ssvep_targets == ssvep_predictions) / ntrials) * 100
+            else:
+                pass # TODO
+            
+            print("SSVEP Accuracy :", accuracy)
+            cm = confusion_matrix(ssvep_targets, ssvep_predictions)
+            print('SSVEP Confusion matrix: ', cm)
+            del erp_epochs, erp_signal, ssvep_signal, ssvep_epochs
             self.do_train = False
             self.do_save = True
 
-        if self.do_save:
+        if self.do_save:           
+            erp_model.fit(self.x, self.y)
+            save_model(self.erp_model_path, erp_model)
             print("training ends...Saving...")
             self.do_save = False 
             stimSet = OVStimulationSet(self.getCurrentTime(),
@@ -267,7 +289,15 @@ class HybridClassifierTrainer(OVBox):
             
 
     def uninitialize(self):
-        pass
+        self.signal = None
+        self.erp_x = None
+        self.erp_y = None
+        self.ssvep_x = None
+        self.ssvep_y = None
+        self.ssvep_references = None
+        self.erp_model = None
+        
+
 
 
 box = HybridClassifierTrainer()
