@@ -95,7 +95,8 @@ class HybridClassifierTrainer(OVBox):
         super(HybridClassifierTrainer, self).__init__()
         self.fs = 512
         self.channels = 0
-        self.signal = []
+        # self.signal = []
+        self.signal =np.array([])
         self.tmp_list = []
         #
         self.erp_stims = []
@@ -148,7 +149,7 @@ class HybridClassifierTrainer(OVBox):
         self.erp_epochDuration = np.ceil(float(self.setting["ERP Epoch Duration (in sec)"]) * self.fs).astype(int)
         self.erp_movingAverage = int(self.setting["ERP Moving Average"])
         self.erp_model_path = self.setting["ERP Classifier"]
-        self.erp_model = pickle.load(open(self.erp_model_path, 'rb'))
+        # self.erp_model = pickle.load(open(self.erp_model_path, 'rb'))
         #
         self.ssvep_lowPass = int(self.setting["SSVEP Low Pass"])
         self.ssvep_highPass = int(self.setting["SSVEP High Pass"])
@@ -174,9 +175,14 @@ class HybridClassifierTrainer(OVBox):
             if type(signal_chunk) == OVSignalHeader:
                 self.channels, self.chunk = signal_chunk.dimensionSizes
 
-            elif type(signal_chunk) == OVSignalBuffer:                
-                self.signal.append(signal_chunk)
-                self.nChunks += 1
+            elif type(signal_chunk) == OVSignalBuffer: 
+                tmp = [signal_chunk[i:i+self.chunk] for i in range(0, len(signal_chunk), self.chunk)]
+                tmp = np.array(tmp)               
+                self.signal = np.hstack((self.signal, tmp)) if self.signal.size else tmp                
+                self.nChunks += 1                
+                del tmp          
+            
+            del signal_chunk
        
        # collect Stimulations markers and times for each paradigm
         if self.input[1]:
@@ -222,12 +228,14 @@ class HybridClassifierTrainer(OVBox):
                             self.switch = True                 
                         
                         if self.ends == 2:
-                            self.do_train = True                        
+                            self.do_train = True
+            del chunk                     
 
         # Filter, Epoch and Train
         if self.do_train:
             # Reshape Signal
-            self.signal = np.array(self.signal).reshape(self.channels, self.chunk*self.nChunks).T           
+            print('Reshaping Signal')
+            self.signal = self.signal.T         
             # 
             self.erp_stims_time = np.floor(np.array(self.erp_stims_time) * self.fs).astype(int)            
             self.ssvep_stims_time = np.floor(np.array(self.ssvep_stims_time) * self.fs).astype(int)
@@ -236,6 +244,7 @@ class HybridClassifierTrainer(OVBox):
             self.ssvep_begin = int(np.floor(self.ssvep_begin * self.fs))
             self.ssvep_end = int(np.floor(self.ssvep_end * self.fs))
             self.ssvep_y = np.array(self.ssvep_y)
+            print('ERP analysis...')
             erp_signal = self.signal[self.erp_begin:self.erp_end,:]
             erp_signal = eeg_filter(erp_signal, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)            
             self.signal[self.erp_begin:self.erp_end,:] = erp_signal
@@ -250,7 +259,10 @@ class HybridClassifierTrainer(OVBox):
             print("Val Accuracy: %0.2f (+/- %0.2f)" % (scores['test_accuracy'].mean(), scores['test_accuracy'].std() * 2))
             print("Train ROC: %0.2f (+/- %0.2f)" % (scores['train_roc_auc'].mean(), scores['train_roc_auc'].std() * 2))
             print("Val ROC: %0.2f (+/- %0.2f)" % (scores['test_roc_auc'].mean(), scores['test_roc_auc'].std() * 2))
+            del erp_signal
+            del erp_epochs
             # SSVEP
+            print('SSVEP analysis')
             ssvep_signal = self.signal[self.ssvep_begin:self.ssvep_end,:]
             ssvep_signal = eeg_filter(ssvep_signal, self.fs, self.ssvep_lowPass, self.ssvep_highPass, self.ssvep_filterOrder)            
             self.signal[self.ssvep_begin:self.ssvep_end,:] = ssvep_signal
@@ -262,7 +274,7 @@ class HybridClassifierTrainer(OVBox):
                 for i in range(ssvep_sync_epochs.shape[2]):
                     ssvep_predictions.append(predict(apply_cca(ssvep_sync_epochs[0:self.ssvep_samples,:,i].transpose((1,0)), self.ssvep_references)) + 1)
                 ntrials = len(ssvep_predictions)
-                ssvep_targets = np.array(self.ssvep_y[sync_trials])
+                ssvep_targets = np.array(self.ssvep_y[sync_trials]-1)
                 ssvep_predictions = np.array(ssvep_predictions)
                 accuracy = (np.sum(ssvep_targets == ssvep_predictions) / ntrials) * 100
             else:
@@ -271,20 +283,18 @@ class HybridClassifierTrainer(OVBox):
             print("SSVEP Accuracy :", accuracy)
             cm = confusion_matrix(ssvep_targets, ssvep_predictions)
             print('SSVEP Confusion matrix: ', cm)
-            del erp_epochs, erp_signal, ssvep_signal, ssvep_epochs
+            del ssvep_signal
+            del ssvep_epochs 
             self.do_train = False
             self.do_save = True
 
         if self.do_save:           
-            erp_model.fit(self.x, self.y)
+            erp_model.fit(self.erp_x, self.erp_y)
             save_model(self.erp_model_path, erp_model)
             print("training ends...Saving...")
             self.do_save = False 
-            stimSet = OVStimulationSet(self.getCurrentTime(),
-                                      self.getCurrentTime())    
-            stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 
-                                self.getCurrentTime(), 
-                                self.getCurrentTime()))
+            stimSet = OVStimulationSet(0.,0.)    
+            stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0.,0.)) 
             self.output[0].append(stimSet)
             
 
@@ -295,9 +305,7 @@ class HybridClassifierTrainer(OVBox):
         self.ssvep_x = None
         self.ssvep_y = None
         self.ssvep_references = None
-        self.erp_model = None
-        
-
+        self.erp_model = None     
 
 
 box = HybridClassifierTrainer()
