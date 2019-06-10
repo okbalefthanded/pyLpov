@@ -2,10 +2,11 @@ from __future__ import print_function, division
 from sklearn.metrics import confusion_matrix
 from scipy.linalg import eig
 from scipy import sqrt
+import scipy.signal as sig
 import numpy as np
-import pickle
 import socket
 import logging
+import pickle
 import os
 
 OVTK_StimulationLabel_Base = 0x00008100
@@ -51,8 +52,13 @@ def eeg_epoch(eeg, epoch_length, markers):
     
 # Feature extraction, downsample + moving average
 def eeg_feature(eeg, downsample, moving_average):
-    samples, channels, epochs, trials = eeg.shape
-    x = eeg.reshape((samples, channels, epochs*trials))
+    samples, channels = eeg.shape[0], eeg.shape[1]
+    if(eeg.ndim == 4):
+        epochs, trials = eeg.shape[2], eeg.shape[3]
+        x = eeg.reshape((samples, channels, epochs*trials))
+    elif (eeg.ndim == 3):
+        trials = eeg.shape[2]
+        x = eeg
     for tr in range(trials):
         for ch in range(channels):
             x[:,ch,tr] = np.convolve(x[:,ch,tr], np.ones(moving_average), 'same') / moving_average
@@ -184,15 +190,14 @@ class HybridOnline(OVBox):
             elif type(signal_chunk) == OVSignalBuffer:
                 # print(self.getCurrentTime())
                 # if(self.getCurrentTime() >= self.erp_begin): 
-                if (self.stream_signal):                    
-                    tmp = [signal_chunk[i:i+self.chunk] for i in range(0, len(signal_chunk), self.chunk)]
-                    tmp = np.array(tmp)               
-                    self.signal = np.hstack((self.signal, tmp)) if self.signal.size else tmp                
-                    self.nChunks += 1                
-                    del tmp          
+                # if (self.stream_signal):                                       
+                tmp = [signal_chunk[i:i+self.chunk] for i in range(0, len(signal_chunk), self.chunk)]
+                tmp = np.array(tmp)               
+                self.signal = np.hstack((self.signal, tmp)) if self.signal.size else tmp                
+                self.nChunks += 1                
+                del tmp          
             
-            del signal_chunk
-        
+            del signal_chunk        
         
         # collect Stimulations markers and times for each paradigm
         if self.input[1]:
@@ -202,10 +207,7 @@ class HybridOnline(OVBox):
                     if chunk:
                         stim = chunk.pop()               
                         # print('Received Marker: ', stim.identifier, 'stamped at', stim.date, 's')
-                        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_ExperimentStart']):
-                            print('Experiment Start...')
-                            # print('EXP start: ', stim.identifier, 'date:', stim.date)
-
+                        
                         # ERP session                        
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch):                       
                             self.ssvep_y = []
@@ -213,41 +215,36 @@ class HybridOnline(OVBox):
                             self.tmp_list = []                            
                             if(len(self.erp_stims_time) == 0):
                                 print('------ERP SESSION START----------')
-                                self.stream_signal = True
-                                self.erp_begin = stim.date
-                                print('ERP begins at:', self.erp_begin)
-
-                        '''
+                                self.erp_begin = int(np.floor(stim.date * self.fs))                                
+                        
                         if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_Target'] or 
                             stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_NonTarget']) and not self.switch: 
-                            self.erp_stims.append(stim.identifier - OpenViBE_stimulation['OVTK_StimulationId_Target'])
-                            self.tmp_list.append(stim.date)
-                        '''   
+                            self.erp_y.append(stim.identifier - OpenViBE_stimulation['OVTK_StimulationId_Target'])
+                         
                         if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OpenViBE_stimulation['OVTK_StimulationId_LabelEnd']):
-                            self.erp_stims.append(stim.identifier - OVTK_StimulationLabel_Base)
-                            self.tmp_list.append(stim.date)        
+                            self.erp_stims.append(stim.identifier - OVTK_StimulationLabel_Base) 
+                            self.tmp_list.append(np.floor(stim.date*self.fs))        
 
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and not self.switch):                            
-                            self.erp_stims_time.append(self.tmp_list)
-                            print(self.erp_stims_time)
-                            self.erp_end = stim.date
-                            print('ERP begin at:', self.erp_begin)
-                            print('ERP ends at:', self.erp_end)
-                            # Classify ERP command
-                            # send command as feedback
+                            self.erp_stims_time = self.tmp_list                           
+                            self.erp_end = int(np.floor(stim.date * self.fs))                                                      
+                            mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin                          
+                            erp_signal = eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)                            
+                            erp_epochs = eeg_epoch(erp_signal, np.array([0, self.erp_epochDuration],dtype=int), mrk)
+                            self.erp_x = eeg_feature(erp_epochs, self.erp_downSample, self.erp_movingAverage)
+                            predictions = self.erp_model.predict(self.erp_x)
+                            command = select_target(predictions, self.erp_y)
+                            print('Command to send is: ', command)
+                            self.feedback_socket.sendto(command, (self.hostname, self.feedback_port))                       
                             # switch to SSVEP
                             self.switch = True
-                            self.stream_signal = False
-                            print('Signal length ERP:', self.signal.shape)
-                            self.signal = np.array([])
-                            print('------ERP SESSION END----------')
-                                                                        
+                            print('------ERP SESSION END----------')                                                                        
 
                         # SSVEP session
-                        if self.switch:
-                            
+                        if self.switch:                            
                             self.erp_stims = []
                             self.erp_stims_time = []
+                            self.erp_y = []
                             if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):
                                 print('------SSVEP SESSION START----------')
                                 self.stream_signal = True
@@ -264,9 +261,9 @@ class HybridOnline(OVBox):
                                 # switch back 
                                 print('ssvep times ', self.ssvep_stims_time)
                                 self.switch = False
-                                self.stream_signal = False
+                                # self.stream_signal = False
                                 print('Signal length SSVEP:', self.signal.shape)
-                                self.signal = np.array([])
+                                # self.signal = np.array([])
                                 print('SSVEP begins at:', self.ssvep_begin)
                                 print('SSVEP ends at:', stim.date)                                 
                                 print('------SSVEP SESSION END----------')
