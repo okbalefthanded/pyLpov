@@ -137,6 +137,7 @@ class SSVEPpredictor(OVBox):
 
         if self.trial_ended and self.do_feedback:
             print('Sending as feedback: ', self.command)
+            print('Sending feedback now: ', pd.to_datetime('now'))
             self.feedback_socket.sendto(self.command, (self.hostname, self.feedback_port))
             # print('time of sending: ', self.getCurrentTime())
             logging.info('feedback sent')
