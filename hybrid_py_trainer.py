@@ -84,6 +84,15 @@ def apply_cca(X,Y):
     coefs = np.array(coefs).transpose()
     return coefs
 
+# ITCCA
+def itcca(X, stims):
+    stimuli_count = len(list(set(stims)))
+    references = []
+    for i in range(stimuli_count): 
+        references.append(np.mean(X[:,:,np.where(stims==i+1)].squeeze(), axis=2))
+    references = np.array(references).transpose((0,2,1))
+    return references
+
 def predict(scores):
     return np.argmax(scores[0,:])
 
@@ -119,6 +128,8 @@ class HybridClassifierTrainer(OVBox):
         self.ssvep_x = []
         self.ssvep_y = []
         self.ssvep_stims_time = []
+        self.ssvep_model = None
+        self.ssvep_model_path = []
         self.ssvep_lowPass = 5
         self.ssvep_highPass = 50
         self.ssvep_filterOrder = 6   
@@ -129,7 +140,8 @@ class HybridClassifierTrainer(OVBox):
         self.ssvep_references = []   
         self.ssvep_channels = []   
         self.ssvep_mode = 'sync'  
-        self.ssvep_begin = 0 
+        self.ssvep_begin = 0
+         
         #
         self.ends = 0
         self.nChunks = 0
@@ -158,12 +170,15 @@ class HybridClassifierTrainer(OVBox):
         self.ssvep_n_harmonics = int(self.setting["SSVEP Harmonics"])
         self.ssvep_samples = int(self.ssvep_epochDuration * self.fs)
         self.ssvep_mode = self.setting["SSVEP Mode"]
+        self.ssvep_model_path = self.setting['SSVEP Classifier']
         t = np.arange(0.0, float(self.ssvep_samples)) / self.fs
         if self.ssvep_mode == 'sync':
             frequencies = self.ssvep_frequencies[1:]
-        # generate reference signals
-        x = [ [np.cos(2*np.pi*f*t*i),np.sin(2*np.pi*f*t*i)] for f in frequencies for i in range(1, self.ssvep_n_harmonics+1)]
-        self.ssvep_references = np.array(x).reshape(len(frequencies), 2*self.ssvep_n_harmonics, self.ssvep_samples) 
+            # generate reference signals
+            x = [ [np.cos(2*np.pi*f*t*i),np.sin(2*np.pi*f*t*i)] for f in frequencies for i in range(1, self.ssvep_n_harmonics+1)]
+            self.ssvep_references = np.array(x).reshape(len(frequencies), 2*self.ssvep_n_harmonics, self.ssvep_samples) 
+        elif self.ssvep_mode == 'async':
+            self.ssvep_references = np.array([])
         
 
     def process(self):        
@@ -267,22 +282,28 @@ class HybridClassifierTrainer(OVBox):
             ssvep_signal = eeg_filter(ssvep_signal, self.fs, self.ssvep_lowPass, self.ssvep_highPass, self.ssvep_filterOrder)            
             self.signal[self.ssvep_begin:self.ssvep_end,:] = ssvep_signal
             ssvep_epochs = eeg_epoch(self.signal, np.array([0, self.ssvep_samples],dtype=int), self.ssvep_stims_time)
+            ssvep_predictions = []
+
             if self.ssvep_mode == 'sync':                
                 sync_trials = np.where(self.ssvep_y != 1)
-                ssvep_sync_epochs = ssvep_epochs[:,:,sync_trials].squeeze()
-                ssvep_predictions = []
+                ssvep_sync_epochs = ssvep_epochs[:,:,sync_trials].squeeze()                
                 for i in range(ssvep_sync_epochs.shape[2]):
                     ssvep_predictions.append(predict(apply_cca(ssvep_sync_epochs[0:self.ssvep_samples,:,i].transpose((1,0)), self.ssvep_references)) + 1)
-                ntrials = len(ssvep_predictions)
                 ssvep_targets = np.array(self.ssvep_y[sync_trials]-1)
-                ssvep_predictions = np.array(ssvep_predictions)
-                accuracy = (np.sum(ssvep_targets == ssvep_predictions) / ntrials) * 100
-            else:
-                pass # TODO
-            
+                
+            elif self.ssvep_mode == 'async':                
+                self.ssvep_references = itcca(ssvep_epochs, self.ssvep_y)
+                ssvep_model = self.ssvep_references
+                for i in range(ssvep_epochs.shape[2]):
+                    ssvep_predictions.append(predict(apply_cca(ssvep_epochs[:,:,i].transpose((1,0)), self.ssvep_references)) + 1)
+                ssvep_targets = np.array(self.ssvep_y)   
+
+            ntrials = len(ssvep_predictions)
+            ssvep_predictions = np.array(ssvep_predictions)
+            accuracy = (np.sum(ssvep_targets == ssvep_predictions) / ntrials) * 100
             print("SSVEP Accuracy :", accuracy)
             cm = confusion_matrix(ssvep_targets, ssvep_predictions)
-            print('SSVEP Confusion matrix: ', cm)
+            print('SSVEP Confusion matrix:\n ', cm)
             del ssvep_signal
             del ssvep_epochs 
             self.do_train = False
@@ -291,6 +312,8 @@ class HybridClassifierTrainer(OVBox):
         if self.do_save:           
             erp_model.fit(self.erp_x, self.erp_y)
             save_model(self.erp_model_path, erp_model)
+            #
+            save_model(self.ssvep_model_path, ssvep_model)
             print("training ends...Saving...")
             self.do_save = False 
             stimSet = OVStimulationSet(0.,0.)    
