@@ -93,6 +93,14 @@ def apply_cca(X,Y):
     coefs = np.array(coefs).transpose()
     return coefs
 
+def itcca(X):
+    stimuli_count = len(list(set(stims)))
+    references = []
+    for i in range(stimuli_count): 
+        references.append(np.mean(X[:,:,np.where(stims==i+1)].squeeze(), axis=2))
+    references = np.array(references).transpose((0,2,1))
+    return references
+
 def predict(scores):
     return np.argmax(scores[0,:])
 
@@ -127,6 +135,8 @@ class HybridOnline(OVBox):
         self.ssvep_x = []
         self.ssvep_y = []
         self.ssvep_stims_time = []
+        self.ssvep_model = None
+        self.ssvep_model_path = []
         self.ssvep_lowPass = 5
         self.ssvep_highPass = 50
         self.ssvep_filterOrder = 6   
@@ -143,7 +153,6 @@ class HybridOnline(OVBox):
         self.nChunks = 0
         self.chunk = 0
         self.switch = False
-        self.do_save = False 
         self.stream_signal = False  
         #
         self.feedback_data = 0
@@ -171,12 +180,17 @@ class HybridOnline(OVBox):
         self.ssvep_n_harmonics = int(self.setting["SSVEP Harmonics"])
         self.ssvep_samples = int(self.ssvep_epochDuration * self.fs)
         self.ssvep_mode = self.setting["SSVEP Mode"]
+        self.ssvep_model_path = self.setting['SSVEP Classifier']
         t = np.arange(0.0, float(self.ssvep_samples)) / self.fs
         if self.ssvep_mode == 'sync':
             frequencies = self.ssvep_frequencies[1:]
-        # generate reference signals
-        x = [ [np.cos(2*np.pi*f*t*i),np.sin(2*np.pi*f*t*i)] for f in frequencies for i in range(1, self.ssvep_n_harmonics+1)]
-        self.ssvep_references = np.array(x).reshape(len(frequencies), 2*self.ssvep_n_harmonics, self.ssvep_samples)
+            # generate reference signals
+            x = [ [np.cos(2*np.pi*f*t*i),np.sin(2*np.pi*f*t*i)] for f in frequencies for i in range(1, self.ssvep_n_harmonics+1)]
+            self.ssvep_references = np.array(x).reshape(len(frequencies), 2*self.ssvep_n_harmonics, self.ssvep_samples)
+        elif self.ssvep_mode == 'async':
+            self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb'))
+            # generate reference by itcca method
+            self.ssvep_references = self.ssvep_model
         
 
     def process(self):        
@@ -208,7 +222,7 @@ class HybridOnline(OVBox):
                     if chunk:
                         stim = chunk.pop()               
                         # print('Received Marker: ', stim.identifier, 'stamped at', stim.date, 's')
-                        
+                        #                         
                         # ERP session                        
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch):                       
                             self.ssvep_y = []
@@ -242,9 +256,10 @@ class HybridOnline(OVBox):
 
                         # SSVEP session
                         if self.switch:                            
+                            
                             self.erp_stims = []
                             self.erp_stims_time = []
-                            self.erp_y = []
+                            # self.erp_y = []
                             if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):                                
                                 # self.stream_signal = True
                                 self.ssvep_begin = int(np.floor(stim.date * self.fs))
@@ -259,14 +274,13 @@ class HybridOnline(OVBox):
                                 # SSVEP                                
                                 self.ssvep_stims_time = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin                                                             
                                 ssvep_signal = eeg_filter(self.signal[:,self.ssvep_begin:self.ssvep_end].T, self.fs, self.ssvep_lowPass, self.ssvep_highPass, self.ssvep_filterOrder)   
-                                ssvep_epochs = eeg_epoch(ssvep_signal, np.array([0, self.ssvep_samples],dtype=int), self.ssvep_stims_time).squeeze()
-                                ssvep_predictions = predict(apply_cca(ssvep_epochs[0:self.ssvep_samples,:].transpose((1,0)), self.ssvep_references)) + 1
+                                ssvep_epochs = eeg_epoch(ssvep_signal, np.array([0, self.ssvep_samples],dtype=int), self.ssvep_stims_time).squeeze()                                
+                                ssvep_predictions = predict(apply_cca(ssvep_epochs.transpose((1,0)), self.ssvep_references)) + 1
                                 self.command = ssvep_predictions
                                 print('preds:', ssvep_predictions, ' target:', self.ssvep_y)
                                 print('Sending as feedback: ', self.command)                                                               
                                 self.feedback_socket.sendto(str(self.command), (self.hostname, self.ssvep_feedback_port)) 
-                                del ssvep_signal
-                                del ssvep_epochs
+                                
                                 '''
                                 if self.ssvep_mode == 'sync':                
                                     sync_trials = np.where(self.ssvep_y != 1)
@@ -280,7 +294,9 @@ class HybridOnline(OVBox):
                                 print("SSVEP Accuracy :", accuracy)
                                 cm = confusion_matrix(ssvep_targets, ssvep_predictions)
                                 print('SSVEP Confusion matrix: ', cm)                              
-                                '''               
+                                '''       
+                                del ssvep_signal
+                                del ssvep_epochs        
                                 self.switch = False
                                 # self.stream_signal = False                                
                                 # self.signal = np.array([])                                                                 
@@ -288,6 +304,7 @@ class HybridOnline(OVBox):
                         # Ending Experiment 
                         if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop']:
                             print('EXPERIMENT ENDS ')
+                            self.switch = False
                             stimSet = OVStimulationSet(0.,0.)    
                             stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0.,0.)) 
                             self.output[0].append(stimSet)
@@ -297,6 +314,5 @@ class HybridOnline(OVBox):
 
     def unintialize(self):
         self.signal = None
-
 
 box = HybridOnline()
