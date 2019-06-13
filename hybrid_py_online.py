@@ -8,6 +8,7 @@ import socket
 import logging
 import pickle
 import os
+import gc
 
 OVTK_StimulationLabel_Base = 0x00008100
 commands = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
@@ -44,7 +45,7 @@ def eeg_filter(eeg, fs, low_pass, high_pass, order):
 def eeg_epoch(eeg, epoch_length, markers):
     channels = int(eeg.shape[1])
     epoch_length = np.around(epoch_length)
-    dur = np.arange(epoch_length[0], epoch_length[1]+1).reshape((epoch_length[1]+1,1)) * np.ones( (1, len(markers)),dtype=int)
+    dur = np.arange(epoch_length[0], epoch_length[1]).reshape((epoch_length[1],1)) * np.ones( (1, len(markers)),dtype=int)
     samples = len(dur)
     epoch_idx = dur + markers
     eeg_epochs = np.array(eeg[epoch_idx,:]).reshape((samples, len(markers), channels)).transpose((0,2,1))
@@ -251,19 +252,21 @@ class HybridOnline(OVBox):
                             self.command = select_target(predictions, self.erp_stims)                        
                             print('Command to send is: ', self.command)
                             self.feedback_socket.sendto(self.command, (self.hostname, self.erp_feedback_port))                       
-                            # switch to SSVEP
+                            # switch to SSVEP, free memory
+                            self.erp_x = []
+                            del erp_signal
+                            del erp_epochs
+                            del mrk
                             self.switch = True                                                                                                   
 
                         # SSVEP session
-                        if self.switch:                            
-                            
+                        if self.switch:                        
                             self.erp_stims = []
                             self.erp_stims_time = []
                             # self.erp_y = []
                             if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):                                
                                 # self.stream_signal = True
-                                self.ssvep_begin = int(np.floor(stim.date * self.fs))
-                                
+                                self.ssvep_begin = int(np.floor(stim.date * self.fs))                                
 
                             if stim.identifier > OVTK_StimulationLabel_Base and stim.identifier <= OVTK_StimulationLabel_Base+len(self.ssvep_frequencies):
                                 self.ssvep_y.append(stim.identifier - OVTK_StimulationLabel_Base)
@@ -275,7 +278,7 @@ class HybridOnline(OVBox):
                                 self.ssvep_stims_time = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin                                                             
                                 ssvep_signal = eeg_filter(self.signal[:,self.ssvep_begin:self.ssvep_end].T, self.fs, self.ssvep_lowPass, self.ssvep_highPass, self.ssvep_filterOrder)   
                                 ssvep_epochs = eeg_epoch(ssvep_signal, np.array([0, self.ssvep_samples],dtype=int), self.ssvep_stims_time).squeeze()                                
-                                ssvep_predictions = predict(apply_cca(ssvep_epochs.transpose((1,0)), self.ssvep_references)) + 1
+                                ssvep_predictions = predict(apply_cca(ssvep_epochs.transpose((1,0)), self.ssvep_references[:,:,0:self.ssvep_samples])) + 1
                                 self.command = ssvep_predictions
                                 print('preds:', ssvep_predictions, ' target:', self.ssvep_y)
                                 print('Sending as feedback: ', self.command)                                                               
@@ -303,8 +306,13 @@ class HybridOnline(OVBox):
                                                     
                         # Ending Experiment 
                         if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop']:
-                            print('EXPERIMENT ENDS ')
+                            print('EXPERIMENT ENDS')
                             self.switch = False
+                            del self.signal
+                            del self.erp_x
+                            del self.erp_model
+                            del self.ssvep_x
+                            del self.ssvep_model
                             stimSet = OVStimulationSet(0.,0.)    
                             stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0.,0.)) 
                             self.output[0].append(stimSet)
@@ -313,6 +321,6 @@ class HybridOnline(OVBox):
         return        
 
     def unintialize(self):
-        self.signal = None
+        pass
 
 box = HybridOnline()
