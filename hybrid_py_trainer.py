@@ -4,6 +4,7 @@ from sklearn import preprocessing
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.model_selection import KFold, cross_validate
 from sklearn.metrics import confusion_matrix
+from swlda.swlda import SWLDA
 from scipy.linalg import eig
 from scipy import sqrt
 import scipy.signal as sig
@@ -44,7 +45,8 @@ def eeg_feature(eeg, downsample, moving_average):
 # Training function
 def train(x, y):
     print("Training...")
-    clf = make_pipeline(preprocessing.StandardScaler(), LDA(solver='lsqr', shrinkage='auto'))
+    # clf = make_pipeline(preprocessing.StandardScaler(), LDA(solver='lsqr', shrinkage='auto'))
+    clf = make_pipeline(preprocessing.StandardScaler(), SWLDA())
     cv = KFold(n_splits=5)
     # scores = cross_val_score(clf, x, y, cv=cv)
     cv_results = cross_validate(clf, x, y, cv=cv, 
@@ -212,8 +214,7 @@ class HybridClassifierTrainer(OVBox):
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch):
                             self.tmp_list = []                            
                             if(len(self.erp_stims_time) == 0):
-                                self.erp_begin = stim.date
-                            
+                                self.erp_begin = stim.date                            
 
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and not self.switch):                            
                             self.erp_stims_time.append(self.tmp_list)
@@ -269,11 +270,18 @@ class HybridClassifierTrainer(OVBox):
             erp_epochs = np.array(erp_epochs).transpose((1,2,3,0))
             self.erp_x = eeg_feature(erp_epochs, self.erp_downSample, self.erp_movingAverage)
             self.erp_y = np.array(self.erp_stims, dtype=int)
+            self.erp_y[self.erp_y==1] = -1
+            self.erp_y[self.erp_y==0] = 1            
+            # pickle.dump(self.erp_x, open('erp_x', 'wb'))
+            # pickle.dump(self.erp_y, open('erp_y', 'wb'))
+
             erp_model, scores = train(self.erp_x, self.erp_y) 
+            
             print("Train Accuracy: %0.2f (+/- %0.2f)" % (scores['train_accuracy'].mean(), scores['train_accuracy'].std() * 2))
             print("Val Accuracy: %0.2f (+/- %0.2f)" % (scores['test_accuracy'].mean(), scores['test_accuracy'].std() * 2))
             print("Train ROC: %0.2f (+/- %0.2f)" % (scores['train_roc_auc'].mean(), scores['train_roc_auc'].std() * 2))
             print("Val ROC: %0.2f (+/- %0.2f)" % (scores['test_roc_auc'].mean(), scores['test_roc_auc'].std() * 2))
+            
             del erp_signal
             del erp_epochs
             # SSVEP
