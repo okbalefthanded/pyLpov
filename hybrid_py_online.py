@@ -17,17 +17,23 @@ commands = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 def select_target(predictions, events):
 
     scores = []
+    # print('events : ', events)
     array = np.array(events)
     values = set(array)
 
     for i in range(1, len(values) + 1):
         item_index = np.where(array == i)
-        cl_item_output = np.array(predictions)[item_index]          
-        score = np.sum(cl_item_output == 0) / len(cl_item_output)
+        cl_item_output = np.array(predictions)[item_index]
+           
+        # score = np.sum(cl_item_output == 1) / len(cl_item_output)
+        score = np.sum(cl_item_output) / len(cl_item_output)
+        # score = np.sum(cl_item_output)
         scores.append(score)
         
-        # check if the target returned by classifier is out of the commands set
-        # or all stimuli were classified as non-target
+    # check if the target returned by classifier is out of the commands set
+    # or all stimuli were classified as non-target
+    # print(' Predictions: ', predictions)
+    print(' Scores: ', scores)
     if scores.count(0) == len(scores):
     #    print self.scores
         feedback_data = '#'
@@ -48,7 +54,9 @@ def eeg_epoch(eeg, epoch_length, markers):
     dur = np.arange(epoch_length[0], epoch_length[1]).reshape((epoch_length[1],1)) * np.ones( (1, len(markers)),dtype=int)
     samples = len(dur)
     epoch_idx = dur + markers
-    eeg_epochs = np.array(eeg[epoch_idx,:]).reshape((samples, len(markers), channels)).transpose((0,2,1))
+    # eeg_epochs = np.array(eeg[epoch_idx,:]).reshape((samples, len(markers), channels), order='F').transpose((0,2,1))
+    eeg_epochs = np.array(eeg[epoch_idx,:]).reshape((samples, len(markers), channels), order='F').transpose((0,2,1))
+
     return eeg_epochs
     
 # Feature extraction, downsample + moving average
@@ -134,6 +142,8 @@ class HybridOnline(OVBox):
         self.erp_end = 0
         self.erp_model_path = []
         self.erp_correct = 0
+        self.erp_target = []
+        self.erp_pred = []
         #
         self.ssvep_x = []
         self.ssvep_y = []
@@ -152,6 +162,8 @@ class HybridOnline(OVBox):
         self.ssvep_mode = 'sync'  
         self.ssvep_begin = 0 
         self.ssvep_correct = 0
+        self.ssvep_target = []
+        self.ssvep_pred = []
         #
         self.ends = 0
         self.nChunks = 0
@@ -228,7 +240,7 @@ class HybridOnline(OVBox):
                         # print('Received Marker: ', stim.identifier, 'stamped at', stim.date, 's')                        
                         # ERP session                        
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch):                       
-                            print('[ERP trial start]', stim.date)
+                            # print('[ERP trial start]', stim.date)
                             self.ssvep_y = []
                             self.ssvep_stims_time = []
                             # self.tmp_list = []                            
@@ -241,11 +253,11 @@ class HybridOnline(OVBox):
                          
                         if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OpenViBE_stimulation['OVTK_StimulationId_LabelEnd'] and not self.switch) :
                             self.erp_stims.append(stim.identifier - OVTK_StimulationLabel_Base) 
-                            print('[ERP stim]', stim.date, self.erp_stims[-1])
+                            # print('[ERP stim]', stim.date, self.erp_stims[-1])
                             self.tmp_list.append(np.floor(stim.date*self.fs))        
 
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and not self.switch):                            
-                            print('[ERP trial stop]', stim.date)
+                            # print('[ERP trial stop]', stim.date)
                             self.erp_stims_time = self.tmp_list 
                             self.erp_stims = np.array(self.erp_stims)                          
                             self.erp_end = int(np.floor(stim.date * self.fs)) 
@@ -253,23 +265,32 @@ class HybridOnline(OVBox):
                             mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin                          
                             erp_signal = eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)                            
                             erp_epochs = eeg_epoch(erp_signal, np.array([0, self.erp_epochDuration],dtype=int), mrk)
-                            self.erp_x = eeg_feature(erp_epochs, self.erp_downSample, self.erp_movingAverage)
+                            self.erp_x = erp_epochs
+                            print('ERP shape: ', self.erp_x.shape)
+                            # self.erp_x = eeg_feature(erp_epochs, self.erp_downSample, self.erp_movingAverage)
+                            
                             predictions = self.erp_model.predict(self.erp_x)
+                            # predictions = self.erp_model.decision_function(self.erp_x)
                             self.command, idx = select_target(predictions, self.erp_stims)                        
                             print('[ERP] Command to send is: ', self.command)
-                            print('[ERP] Command idx: ', idx)
+                           
                             self.feedback_socket.sendto(self.command, (self.hostname, self.erp_feedback_port))                       
                             # switch to SSVEP, free memory
                             self.erp_y[self.erp_y == 1] = -1
                             self.erp_y[self.erp_y == 0] = 1
-                            
+                            # tg = 0
+                            # print('shape : ', self.erp_stims.shape)
+                            # print('real classes: ', self.erp_y)
+                            self.erp_pred.append(self.command)
+                            tg = np.where(self.erp_y == 1)
+                            print('tg : ', tg)                                
+                            print('[ERP Target] : ', self.erp_stims[tg[0][0]] )
+                            self.erp_target.append(self.erp_stims[tg[0][0]]) 
                             if self.command == '#':
-                                print('Incorrect ERP...')
-                            else:
-                                tg = self.erp_y.where(self.erp_y == 1)
-                                print('[ERP tg: ', tg)
-                                if idx == tg:
-                                    self.erp_correct += 1
+                                print('NO ERP detection ...')
+                            elif int(self.command) == self.erp_stims[tg[0][0]]:                               
+                                print('[ERP Correct! ]')
+                                self.erp_correct += 1
                         
                             self.erp_x = []
                             del erp_signal
@@ -286,16 +307,16 @@ class HybridOnline(OVBox):
                             self.erp_y = []
                             if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):                                
                                 # self.stream_signal = True
-                                print('[SSVEP trial start]', stim.date)
+                                # print('[SSVEP trial start]', stim.date)
                                 self.ssvep_begin = int(np.floor(stim.date * self.fs))                                
 
                             if stim.identifier >= OVTK_StimulationLabel_Base and stim.identifier <= OVTK_StimulationLabel_Base+len(self.ssvep_frequencies):
                                 self.ssvep_y.append(stim.identifier - OVTK_StimulationLabel_Base)
-                                print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
+                                # print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
                                 self.ssvep_stims_time.append(np.floor(stim.date*self.fs)) 
 
                             if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and self.ssvep_y):
-                                print('[SSVEP trial stop]', stim.date)                               
+                                # print('[SSVEP trial stop]', stim.date)                               
                                 
                                 self.ssvep_end = int(np.floor(stim.date*self.fs))                                
                                 # SSVEP                                
@@ -309,7 +330,8 @@ class HybridOnline(OVBox):
                                     self.ssvep_correct += 1
                                 print('[SSVEP] Sending as feedback: ', self.command)                                                               
                                 self.feedback_socket.sendto(str(self.command), (self.hostname, self.ssvep_feedback_port))
-             
+                                self.ssvep_target.append(self.ssvep_y[-1])
+                                self.ssvep_pred.append(self.command)
                                 '''
                                 if self.ssvep_mode == 'sync':                
                                     sync_trials = np.where(self.ssvep_y != 1)
@@ -328,8 +350,12 @@ class HybridOnline(OVBox):
                                 # del ssvep_epochs        
                                 self.switch = False
                                 self.n_trials += 1
+                                print('Trial N :', self.n_trials, ' / ERP Target : ', self.erp_target)
+                                print('Trial N :', self.n_trials, ' / ERP Pred : ', self.erp_pred)
+                                print('Trial N :', self.n_trials, ' / SSVEP Target : ', self.ssvep_target)
+                                print('Trial N :', self.n_trials, ' / SSVEP Pred : ', self.ssvep_pred)
                                 print('Trial N :', self.n_trials, ' / ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100, '/  SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100 )
-                         
+                                
                                 # self.stream_signal = False                                
                                 # self.signal = np.array([])                                                                 
                                                     

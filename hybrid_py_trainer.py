@@ -2,9 +2,14 @@ from __future__ import print_function, division
 from sklearn.pipeline import make_pipeline
 from sklearn import preprocessing
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
+from sklearn.linear_model import LogisticRegression
+from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.gaussian_process.kernels import RBF
 from sklearn.model_selection import KFold, cross_validate
 from sklearn.metrics import confusion_matrix
 from swlda.swlda import SWLDA
+from blda.blda import BLDA
+from blda.feature_extraction import EPFL
 from scipy.linalg import eig
 from scipy import sqrt
 import scipy.signal as sig
@@ -45,15 +50,20 @@ def eeg_feature(eeg, downsample, moving_average):
 # Training function
 def train(x, y):
     print("Training...")
-    # clf = make_pipeline(preprocessing.StandardScaler(), LDA(solver='lsqr', shrinkage='auto'))
-    clf = make_pipeline(preprocessing.StandardScaler(), SWLDA())
-    cv = KFold(n_splits=5)
+    # clf = make_pipeline(preprocessing.StandardScaler(), LDA(solver='lsqr', shrinkage='auto')) # Shrinkage-LDA 
+    # clf = make_pipeline(preprocessing.StandardScaler(), SWLDA()) # SWLDA
+    # clf = make_pipeline(preprocessing.StandardScaler(), LogisticRegression(penalty='l1', solver='liblinear') ) # LogisticRegression + L1
+    # clf = make_pipeline(preprocessing.StandardScaler(), GaussianProcessClassifier(kernel=1.0 * RBF(length_scale=1.0), optimizer=None) ) # Gaussian Process
+    clf = make_pipeline(EPFL(decimation_factor=12, p=0.1), preprocessing.StandardScaler(), BLDA(verbose=True)) # BLDA 
+    # cv = KFold(n_splits=5)
     # scores = cross_val_score(clf, x, y, cv=cv)
-    cv_results = cross_validate(clf, x, y, cv=cv, 
-                                scoring=('accuracy', 'roc_auc'),
-                                return_train_score=True)
+    # cv_results = cross_validate(clf, x, y, cv=cv, 
+                                # scoring=('accuracy', 'roc_auc'),
+                                # return_train_score=True)
+    clf.fit(x, y)
     print("End training")
-    return clf, cv_results
+    #return clf, cv_results
+    return clf
 
 # Save model after training
 def save_model(filename, model):
@@ -262,26 +272,34 @@ class HybridClassifierTrainer(OVBox):
             self.ssvep_y = np.array(self.ssvep_y)
             print('ERP analysis...')
             erp_signal = self.signal[self.erp_begin:self.erp_end,:]
-            erp_signal = eeg_filter(erp_signal, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)            
-            self.signal[self.erp_begin:self.erp_end,:] = erp_signal
+            # erp_signal = eeg_filter(erp_signal, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)            
+            # self.signal[self.erp_begin:self.erp_end,:] = erp_signal
+            pickle.dump(self.signal, open('sig_calib_5_tr', 'wb'))
+            pickle.dump(self.erp_stims_time, open('ev_calib_5_tr', 'wb'))
             erp_epochs = [] 
             for i in range(self.erp_stims_time.shape[0]):
                 erp_epochs.append(eeg_epoch(self.signal, np.array([0, self.erp_epochDuration],dtype=int), self.erp_stims_time[i,:]))
             erp_epochs = np.array(erp_epochs).transpose((1,2,3,0))
-            self.erp_x = eeg_feature(erp_epochs, self.erp_downSample, self.erp_movingAverage)
-            self.erp_y = np.array(self.erp_stims, dtype=int)
+            # self.erp_x = eeg_feature(erp_epochs, self.erp_downSample, self.erp_movingAverage)
+            samples, channels, epochs, trials = erp_epochs.shape
+            self.erp_x = erp_epochs.reshape((samples, channels, epochs*trials), order='F')
+            
+            self.erp_y = np.array(self.erp_stims, dtype=np.float32)
             self.erp_y[self.erp_y==1] = -1
             self.erp_y[self.erp_y==0] = 1            
             # pickle.dump(self.erp_x, open('erp_x', 'wb'))
             # pickle.dump(self.erp_y, open('erp_y', 'wb'))
 
+            '''
             erp_model, scores = train(self.erp_x, self.erp_y) 
             
             print("Train Accuracy: %0.2f (+/- %0.2f)" % (scores['train_accuracy'].mean(), scores['train_accuracy'].std() * 2))
             print("Val Accuracy: %0.2f (+/- %0.2f)" % (scores['test_accuracy'].mean(), scores['test_accuracy'].std() * 2))
             print("Train ROC: %0.2f (+/- %0.2f)" % (scores['train_roc_auc'].mean(), scores['train_roc_auc'].std() * 2))
             print("Val ROC: %0.2f (+/- %0.2f)" % (scores['test_roc_auc'].mean(), scores['test_roc_auc'].std() * 2))
-            
+            '''
+
+
             del erp_signal
             del erp_epochs
             # SSVEP
@@ -317,8 +335,11 @@ class HybridClassifierTrainer(OVBox):
             self.do_train = False
             self.do_save = True
 
-        if self.do_save:           
-            erp_model.fit(self.erp_x, self.erp_y)
+        if self.do_save:
+            
+            # erp_model = BLDA(verbose=False) 
+            erp_model = train(self.erp_x, self.erp_y)           
+            # erp_model.fit(self.erp_x, self.erp_y)
             save_model(self.erp_model_path, erp_model)
             #
             save_model(self.ssvep_model_path, ssvep_model)
