@@ -33,7 +33,7 @@ def select_target(predictions, events):
     # check if the target returned by classifier is out of the commands set
     # or all stimuli were classified as non-target
     # print(' Predictions: ', predictions)
-    print(' Scores: ', scores)
+    # print(' Scores: ', scores)
     if scores.count(0) == len(scores):
     #    print self.scores
         feedback_data = '#'
@@ -46,6 +46,7 @@ def select_target(predictions, events):
 def eeg_filter(eeg, fs, low_pass, high_pass, order):
     B,A = sig.butter(order, np.array([low_pass,high_pass],dtype=float)/(fs/2), btype='bandpass')
     return sig.filtfilt(B, A, eeg, axis=0)
+    # return sig.filtfilt(B, A, eeg, axis=0, padtype='odd', padlen=3*(max(len(B),len(A))-1))
 
 # Epoch
 def eeg_epoch(eeg, epoch_length, markers):
@@ -56,8 +57,8 @@ def eeg_epoch(eeg, epoch_length, markers):
     epoch_idx = dur + markers
     # eeg_epochs = np.array(eeg[epoch_idx,:]).reshape((samples, len(markers), channels), order='F').transpose((0,2,1))
     eeg_epochs = np.array(eeg[epoch_idx,:]).reshape((samples, len(markers), channels), order='F').transpose((0,2,1))
-
     return eeg_epochs
+
     
 # Feature extraction, downsample + moving average
 def eeg_feature(eeg, downsample, moving_average):
@@ -240,7 +241,7 @@ class HybridOnline(OVBox):
                         # print('Received Marker: ', stim.identifier, 'stamped at', stim.date, 's')                        
                         # ERP session                        
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch):                       
-                            # print('[ERP trial start]', stim.date)
+                            print('[ERP trial start]', stim.date)
                             self.ssvep_y = []
                             self.ssvep_stims_time = []
                             # self.tmp_list = []                            
@@ -257,7 +258,7 @@ class HybridOnline(OVBox):
                             self.tmp_list.append(np.floor(stim.date*self.fs))        
 
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and not self.switch):                            
-                            # print('[ERP trial stop]', stim.date)
+                            print('[ERP trial stop]', stim.date)
                             self.erp_stims_time = self.tmp_list 
                             self.erp_stims = np.array(self.erp_stims)                          
                             self.erp_end = int(np.floor(stim.date * self.fs)) 
@@ -266,7 +267,7 @@ class HybridOnline(OVBox):
                             erp_signal = eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)                            
                             erp_epochs = eeg_epoch(erp_signal, np.array([0, self.erp_epochDuration],dtype=int), mrk)
                             self.erp_x = erp_epochs
-                            print('ERP shape: ', self.erp_x.shape)
+                            # print('ERP shape: ', self.erp_x.shape)
                             # self.erp_x = eeg_feature(erp_epochs, self.erp_downSample, self.erp_movingAverage)
                             
                             predictions = self.erp_model.predict(self.erp_x)
@@ -283,7 +284,7 @@ class HybridOnline(OVBox):
                             # print('real classes: ', self.erp_y)
                             self.erp_pred.append(self.command)
                             tg = np.where(self.erp_y == 1)
-                            print('tg : ', tg)                                
+                            # print('tg : ', tg)                                
                             print('[ERP Target] : ', self.erp_stims[tg[0][0]] )
                             self.erp_target.append(self.erp_stims[tg[0][0]]) 
                             if self.command == '#':
@@ -307,7 +308,7 @@ class HybridOnline(OVBox):
                             self.erp_y = []
                             if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):                                
                                 # self.stream_signal = True
-                                # print('[SSVEP trial start]', stim.date)
+                                print('[SSVEP trial start]', stim.date)
                                 self.ssvep_begin = int(np.floor(stim.date * self.fs))                                
 
                             if stim.identifier >= OVTK_StimulationLabel_Base and stim.identifier <= OVTK_StimulationLabel_Base+len(self.ssvep_frequencies):
@@ -316,14 +317,17 @@ class HybridOnline(OVBox):
                                 self.ssvep_stims_time.append(np.floor(stim.date*self.fs)) 
 
                             if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and self.ssvep_y):
-                                # print('[SSVEP trial stop]', stim.date)                               
+                                print('[SSVEP trial stop]', stim.date)                               
                                 
                                 self.ssvep_end = int(np.floor(stim.date*self.fs))                                
                                 # SSVEP                                
                                 self.ssvep_stims_time = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin                                                             
                                 ssvep_signal = eeg_filter(self.signal[:,self.ssvep_begin:self.ssvep_end].T, self.fs, self.ssvep_lowPass, self.ssvep_highPass, self.ssvep_filterOrder)   
                                 ssvep_epochs = eeg_epoch(ssvep_signal, np.array([0, self.ssvep_samples],dtype=int), self.ssvep_stims_time).squeeze()                                
-                                ssvep_predictions = predict(apply_cca(ssvep_epochs.transpose((1,0)), self.ssvep_references[:,:,0:self.ssvep_samples])) + 1
+                                # ssvep_predictions = predict(apply_cca(ssvep_epochs.transpose((1,0)), self.ssvep_references[:,:,0:self.ssvep_samples])) + 1
+                                ssvep_epochs = ssvep_epochs.transpose((2,1,0)) 
+                                print('SSVEP epochs : shape : ', ssvep_epochs.shape)
+                                ssvep_predictions = self.ssvep_model.predict(ssvep_epochs)
                                 self.command = ssvep_predictions
                                 print('[SSVEP] preds:', ssvep_predictions, ' target:', self.ssvep_y)
                                 if ssvep_predictions == self.ssvep_y:

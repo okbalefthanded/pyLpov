@@ -1,19 +1,26 @@
 from __future__ import print_function, division
+# ML utils
 from sklearn.pipeline import make_pipeline
 from sklearn import preprocessing
+from sklearn.model_selection import KFold, cross_validate
+from sklearn.metrics import confusion_matrix
+# classifiers
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.linear_model import LogisticRegression
 from sklearn.gaussian_process import GaussianProcessClassifier
-from sklearn.gaussian_process.kernels import RBF
-from sklearn.model_selection import KFold, cross_validate
-from sklearn.metrics import confusion_matrix
+from sklearn.svm import SVC
 from swlda.swlda import SWLDA
 from blda.blda import BLDA
+# feature extraction
+from sklearn.gaussian_process.kernels import RBF
 from blda.feature_extraction import EPFL
+from mlr.mlr import MLR
+# 
 from scipy.linalg import eig
 from scipy import sqrt
 import scipy.signal as sig
 import numpy as np
+# utils
 import pickle
 import os
 
@@ -25,6 +32,7 @@ OVTK_StimulationLabel_Base = 0x00008100
 def eeg_filter(eeg, fs, low_pass, high_pass, order):
     B,A = sig.butter(order, np.array([low_pass,high_pass],dtype=float)/(fs/2), btype='bandpass')
     return sig.filtfilt(B, A, eeg, axis=0)
+    # return sig.filtfilt(B, A, eeg, axis=0, padtype='odd', padlen=3*(max(len(B),len(A))-1))
 
 # Epoch
 def eeg_epoch(eeg, epoch_length, markers):
@@ -33,7 +41,7 @@ def eeg_epoch(eeg, epoch_length, markers):
     dur = np.arange(epoch_length[0], epoch_length[1]+1).reshape((epoch_length[1]+1,1)) * np.ones( (1, len(markers)),dtype=int)
     samples = len(dur)
     epoch_idx = dur + markers
-    eeg_epochs = np.array(eeg[epoch_idx,:]).reshape((samples, len(markers), channels)).transpose((0,2,1))
+    eeg_epochs = np.array(eeg[epoch_idx,:]).reshape((samples, len(markers), channels), order='F').transpose((0,2,1))
     return eeg_epochs
     
 # Feature extraction, downsample + moving average
@@ -49,7 +57,7 @@ def eeg_feature(eeg, downsample, moving_average):
 
 # Training function
 def train(x, y):
-    print("Training...")
+    print("ERP Training...")
     # clf = make_pipeline(preprocessing.StandardScaler(), LDA(solver='lsqr', shrinkage='auto')) # Shrinkage-LDA 
     # clf = make_pipeline(preprocessing.StandardScaler(), SWLDA()) # SWLDA
     # clf = make_pipeline(preprocessing.StandardScaler(), LogisticRegression(penalty='l1', solver='liblinear') ) # LogisticRegression + L1
@@ -64,6 +72,20 @@ def train(x, y):
     print("End training")
     #return clf, cv_results
     return clf
+
+def train_ssvep(ssvep_x, ssvep_y):
+    print("SSVEP Training...")
+    ssvep_x = ssvep_x.transpose((2,1,0))
+    clf = make_pipeline(MLR(),  preprocessing.StandardScaler(), SVC())
+    # clf = make_pipeline(MLR(), SVC())
+    cv = KFold(n_splits=5)
+    cv_results = cross_validate(clf, ssvep_x, ssvep_y, cv=cv, 
+                                scoring=('accuracy'),
+                                return_train_score=True)
+    print("End training")
+    return clf, cv_results
+    # return clf
+
 
 # Save model after training
 def save_model(filename, model):
@@ -272,18 +294,19 @@ class HybridClassifierTrainer(OVBox):
             self.ssvep_y = np.array(self.ssvep_y)
             print('ERP analysis...')
             erp_signal = self.signal[self.erp_begin:self.erp_end,:]
-            # erp_signal = eeg_filter(erp_signal, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)            
-            # self.signal[self.erp_begin:self.erp_end,:] = erp_signal
-            pickle.dump(self.signal, open('sig_calib_5_tr', 'wb'))
-            pickle.dump(self.erp_stims_time, open('ev_calib_5_tr', 'wb'))
+            erp_signal = eeg_filter(erp_signal, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)            
+            self.signal[self.erp_begin:self.erp_end,:] = erp_signal
+            # pickle.dump(self.signal, open('sig_calib_5_tr', 'wb'))
+            # pickle.dump(self.erp_stims_time, open('ev_calib_5_tr', 'wb'))
             erp_epochs = [] 
             for i in range(self.erp_stims_time.shape[0]):
                 erp_epochs.append(eeg_epoch(self.signal, np.array([0, self.erp_epochDuration],dtype=int), self.erp_stims_time[i,:]))
             erp_epochs = np.array(erp_epochs).transpose((1,2,3,0))
             # self.erp_x = eeg_feature(erp_epochs, self.erp_downSample, self.erp_movingAverage)
+            ## for use with BLDA
             samples, channels, epochs, trials = erp_epochs.shape
-            self.erp_x = erp_epochs.reshape((samples, channels, epochs*trials), order='F')
-            
+            self.erp_x = erp_epochs.reshape((samples, channels, epochs*trials), order='F')            
+            ##
             self.erp_y = np.array(self.erp_stims, dtype=np.float32)
             self.erp_y[self.erp_y==1] = -1
             self.erp_y[self.erp_y==0] = 1            
@@ -298,8 +321,6 @@ class HybridClassifierTrainer(OVBox):
             print("Train ROC: %0.2f (+/- %0.2f)" % (scores['train_roc_auc'].mean(), scores['train_roc_auc'].std() * 2))
             print("Val ROC: %0.2f (+/- %0.2f)" % (scores['test_roc_auc'].mean(), scores['test_roc_auc'].std() * 2))
             '''
-
-
             del erp_signal
             del erp_epochs
             # SSVEP
@@ -307,9 +328,10 @@ class HybridClassifierTrainer(OVBox):
             ssvep_signal = self.signal[self.ssvep_begin:self.ssvep_end,:]
             ssvep_signal = eeg_filter(ssvep_signal, self.fs, self.ssvep_lowPass, self.ssvep_highPass, self.ssvep_filterOrder)            
             self.signal[self.ssvep_begin:self.ssvep_end,:] = ssvep_signal
-            ssvep_epochs = eeg_epoch(self.signal, np.array([0, self.ssvep_samples],dtype=int), self.ssvep_stims_time)
+            ssvep_epochs = eeg_epoch(self.signal, np.array([0, self.ssvep_samples-1],dtype=int), self.ssvep_stims_time)
             ssvep_predictions = []
-
+            self.ssvep_x = ssvep_epochs
+            
             if self.ssvep_mode == 'sync':                
                 sync_trials = np.where(self.ssvep_y != 1)
                 ssvep_sync_epochs = ssvep_epochs[:,:,sync_trials].squeeze()                
@@ -318,31 +340,47 @@ class HybridClassifierTrainer(OVBox):
                 ssvep_targets = np.array(self.ssvep_y[sync_trials]-1)
                 
             elif self.ssvep_mode == 'async':                
-                self.ssvep_references = itcca(ssvep_epochs, self.ssvep_y)
-                ssvep_model = self.ssvep_references
-                for i in range(ssvep_epochs.shape[2]):
-                    ssvep_predictions.append(predict(apply_cca(ssvep_epochs[:,:,i].transpose((1,0)), self.ssvep_references)) + 1)
-                ssvep_targets = np.array(self.ssvep_y)   
+                # self.ssvep_references = itcca(ssvep_epochs, self.ssvep_y)
+                # ssvep_model = self.ssvep_references
+                self.ssvep_model, ssvep_results = train_ssvep(self.ssvep_x, self.ssvep_y)
+                # self.ssvep_model = train_ssvep(self.ssvep_x, self.ssvep_y)
+                # for i in range(ssvep_epochs.shape[2]):
+                #     ssvep_predictions.append(predict(apply_cca(ssvep_epochs[:,:,i].transpose((1,0)), self.ssvep_references)) + 1)
+                # ssvep_acc = self.ssvep_model.score(self.ssvep_x, self.ssvep_y)
+                # print('SSVEP train acc: ', ssvep_acc)
+                # ssvep_predictions = self.ssvep_model.predict(self.ssvep_x)                
+                # ssvep_targets = np.array(self.ssvep_y)   
 
+            # pickle.dump(ssvep_epochs, open('ssvep_x', 'wb'))
+            # pickle.dump(self.ssvep_y, open('ssvep_y', 'wb'))
+            print("Train Accuracy: %0.2f (+/- %0.2f)" % (ssvep_results['train_score'].mean(), ssvep_results['train_score'].std() * 2))
+            print("Val Accuracy: %0.2f (+/- %0.2f)" % (ssvep_results['test_score'].mean(), ssvep_results['test_score'].std() * 2))
+
+            '''
             ntrials = len(ssvep_predictions)
             ssvep_predictions = np.array(ssvep_predictions)
             accuracy = (np.sum(ssvep_targets == ssvep_predictions) / ntrials) * 100
             print("SSVEP Accuracy :", accuracy)
-            cm = confusion_matrix(ssvep_targets, ssvep_predictions)
-            print('SSVEP Confusion matrix:\n ', cm)
+            '''
+            # cm = confusion_matrix(ssvep_targets, ssvep_predictions)
+            # print('SSVEP Confusion matrix:\n ', cm)
+            
             del ssvep_signal
             del ssvep_epochs 
             self.do_train = False
             self.do_save = True
 
         if self.do_save:
-            
-            # erp_model = BLDA(verbose=False) 
+
             erp_model = train(self.erp_x, self.erp_y)           
             # erp_model.fit(self.erp_x, self.erp_y)
             save_model(self.erp_model_path, erp_model)
             #
-            save_model(self.ssvep_model_path, ssvep_model)
+            self.ssvep_model.fit(self.ssvep_x.transpose((2,1,0)), self.ssvep_y)
+            cm = confusion_matrix(self.ssvep_y, self.ssvep_model.predict(self.ssvep_x.transpose((2,1,0))))
+            print('SSVEP Confusion matrix:\n ', cm)
+            save_model(self.ssvep_model_path, self.ssvep_model)
+            #
             print("training ends...Saving...")
             self.do_save = False 
             stimSet = OVStimulationSet(0.,0.)    
