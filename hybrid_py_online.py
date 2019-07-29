@@ -121,6 +121,7 @@ class HybridOnline(OVBox):
         self.experiment_state = 0   
         self.fs = 512
         self.channels = 0
+        self.mode = None
         # self.signal = []
         self.signal =np.array([])
         self.tmp_list = []
@@ -160,7 +161,7 @@ class HybridOnline(OVBox):
         self.ssvep_samples = 0
         self.ssvep_references = []   
         self.ssvep_channels = []   
-        self.ssvep_mode = 'sync'  
+        self.ssvep_mode = 'async'  
         self.ssvep_begin = 0 
         self.ssvep_correct = 0
         self.ssvep_target = []
@@ -250,6 +251,7 @@ class HybridOnline(OVBox):
                         
                         if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_Target'] or 
                             stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_NonTarget']) and not self.switch: 
+                            self.mode = 'Copy'
                             self.erp_y.append(stim.identifier - OpenViBE_stimulation['OVTK_StimulationId_Target'])
                          
                         if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OpenViBE_stimulation['OVTK_StimulationId_LabelEnd'] and not self.switch) :
@@ -283,15 +285,16 @@ class HybridOnline(OVBox):
                             # print('shape : ', self.erp_stims.shape)
                             # print('real classes: ', self.erp_y)
                             self.erp_pred.append(self.command)
-                            tg = np.where(self.erp_y == 1)
-                            # print('tg : ', tg)                                
-                            print('[ERP Target] : ', self.erp_stims[tg[0][0]] )
-                            self.erp_target.append(self.erp_stims[tg[0][0]]) 
-                            if self.command == '#':
-                                print('NO ERP detection ...')
-                            elif int(self.command) == self.erp_stims[tg[0][0]]:                               
-                                print('[ERP Correct! ]')
-                                self.erp_correct += 1
+                            if self.mode == 'Copy':
+                                tg = np.where(self.erp_y == 1)
+                                # print('tg : ', tg)                                
+                                print('[ERP Target] : ', self.erp_stims[tg[0][0]] )
+                                self.erp_target.append(self.erp_stims[tg[0][0]]) 
+                                if self.command == '#':
+                                    print('NO ERP detection ...')
+                                elif int(self.command) == self.erp_stims[tg[0][0]]:                               
+                                    print('[ERP Correct! ]')
+                                    self.erp_correct += 1
                         
                             self.erp_x = []
                             del erp_signal
@@ -325,27 +328,29 @@ class HybridOnline(OVBox):
                                 ssvep_signal = eeg_filter(self.signal[:,self.ssvep_begin:self.ssvep_end].T, self.fs, self.ssvep_lowPass, self.ssvep_highPass, self.ssvep_filterOrder)   
                                 ssvep_epochs = eeg_epoch(ssvep_signal, np.array([0, self.ssvep_samples],dtype=int), self.ssvep_stims_time).squeeze()                                
                                 # ssvep_predictions = predict(apply_cca(ssvep_epochs.transpose((1,0)), self.ssvep_references[:,:,0:self.ssvep_samples])) + 1
-                                ssvep_epochs = ssvep_epochs.transpose((2,1,0)) 
-                                print('SSVEP epochs : shape : ', ssvep_epochs.shape)
-                                ssvep_predictions = self.ssvep_model.predict(ssvep_epochs)
-                                self.command = ssvep_predictions
-                                print('[SSVEP] preds:', ssvep_predictions, ' target:', self.ssvep_y)
-                                if ssvep_predictions == self.ssvep_y:
-                                    self.ssvep_correct += 1
-                                print('[SSVEP] Sending as feedback: ', self.command)                                                               
-                                self.feedback_socket.sendto(str(self.command), (self.hostname, self.ssvep_feedback_port))
-                                self.ssvep_target.append(self.ssvep_y[-1])
-                                self.ssvep_pred.append(self.command)
-                                '''
+                                # ssvep_epochs = ssvep_epochs.transpose((2,1,0))                             
+                                                                
                                 if self.ssvep_mode == 'sync':                
                                     sync_trials = np.where(self.ssvep_y != 1)
                                     ssvep_sync_epochs = ssvep_epochs[:,:,sync_trials].squeeze()
                                     ssvep_predictions = []                                    
                                     ssvep_predictions.append(predict(apply_cca(ssvep_sync_epochs[0:self.ssvep_samples,:].transpose((1,0)), self.ssvep_references)) + 1)
                                     
-                                else:
-                                    pass # TODO
-            
+                                elif self.ssvep_mode == 'async':
+                                    ssvep_predictions = self.ssvep_model.predict(ssvep_epochs)
+
+                                self.command = ssvep_predictions.item()
+                                
+                                if self.mode == 'Copy':
+                                    print('[SSVEP] preds:', ssvep_predictions, ' target:', self.ssvep_y)
+                                    if ssvep_predictions == self.ssvep_y:
+                                        self.ssvep_correct += 1
+                                    self.ssvep_target.append(self.ssvep_y[-1])
+
+                                print('[SSVEP] Sending as feedback: ', self.command)                                                               
+                                self.feedback_socket.sendto(str(self.command), (self.hostname, self.ssvep_feedback_port))                                
+                                self.ssvep_pred.append(self.command)
+                                '''
                                 print("SSVEP Accuracy :", accuracy)
                                 cm = confusion_matrix(ssvep_targets, ssvep_predictions)
                                 print('SSVEP Confusion matrix: ', cm)                              
