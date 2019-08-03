@@ -1,0 +1,42 @@
+name: HYBRID_APPROACH
+
+ERP_pipeline:
+  - name: EPFL
+    from: blda.feature_extraction
+    parameters:
+        decimation_factor: 12
+        p: 0.1
+        
+  - name: StandardScaler
+    from: sklearn.preprocessing
+    
+  - name: BLDA
+    from: blda.blda
+    parameters:
+        verbose: True
+
+
+SSVEP_pipeline:
+  gridsearch:
+  - name: KFold
+    from: sklearn.model_selection
+    parameters:
+       n_splits: 5
+       shuffle: True
+       random_state: 1       
+       
+  - name: SVC
+    from: sklearn.svm
+      
+  - name: params
+    parameters:
+        kernel: ['linear', 'rbf']
+        C: [0.1, 1, 10]
+        gamma: [.01, .1]
+
+  pipeline:
+  - name: MLR
+    from: mlr.mlr
+
+  - name: StandardScaler
+    from: sklearn.preprocessing      
