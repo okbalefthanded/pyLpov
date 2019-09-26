@@ -1,43 +1,66 @@
+from __future__ import division
+from sklearn.base import BaseEstimator, ClassifierMixin
 from scipy.linalg import eig
 from scipy import sqrt
 import numpy as np
-import scipy.signal as sig
 
-# CCA
-def cca(X,Y):
-    if X.shape[1] != Y.shape[1]:
-        raise Exception('unable to apply CCA, X and Y have different dimensions')
-    z = np.vstack((X,Y))
-    C = np.cov(z)
-    sx = X.shape[0]
-    sy = Y.shape[0]
-    Cxx = C[0:sx, 0:sx] + 10**(-8)*np.eye(sx)
-    Cxy = C[0:sx, sx:sx+sy]
-    Cyx = Cxy.transpose()
-    Cyy = C[sx:sx+sy, sx:sx+sy] + 10**(-8)*np.eye(sy)
-    invCyy = np.linalg.pinv(Cyy)
-    invCxx = np.linalg.pinv(Cxx)
-    r, Wx = eig(invCxx.dot(Cxy).dot(invCyy).dot(Cyx))
-    r = sqrt(np.real(r))
-    r = np.sort(np.real(r),  axis=None)
-    r = np.flipud(r)
-    return r
 
-# ITCCA
-def itcca(X, stims):
-    stimuli_count = len(list(set(stims)))
-    references = []
-    for i in range(stimuli_count): 
-        references.append(np.mean(X[:,:,np.where(stims==i+1)].squeeze(), axis=2))
-    references = np.array(references).transpose((0,2,1))
-    return references
+class CCA(BaseEstimator, ClassifierMixin):
+    def __init__(self, n_harmonics=2, frequencies=[], references=None, length=4):
+        self.n_harmonics = n_harmonics
+        self.frequencies = frequencies
+        self.references = references
+        self.length = length
 
-def apply_cca(X,Y):
-    coefs = []
-    for i in range(Y.shape[0]):
-        coefs.append(cca(X,Y[i,:,:]))
-    coefs = np.array(coefs).transpose()
-    return coefs
+    def fit(self, X, y=None):
+        # construct frequency template
+        samples = X.shape[1]
+        t = np.linspace(0.0, float(self.length), samples)
+        refs = [ [np.cos(2*np.pi*f*t*i),np.sin(2*np.pi*f*t*i)] for f in self.frequencies for i in range(1, self.n_harmonics+1)]
+        self.references =  np.array(refs).reshape(len(self.frequencies), 2*self.n_harmonics, samples) 
+        return self
 
-def predict(scores):
-    return np.argmax(scores[0,:])
+    def decision_function(self, X):
+        return self._apply_cca(X)
+
+    def predict(self, X, y=None):
+        return np.argmax(self.decision_function(X)) 
+
+    def predict_proba(self, X):
+        pass
+
+    def _apply_cca(self, X):
+        coefs = []
+        for i in range(self.references.shape[0]):
+            coefs.append(self._cca_coef(X,self.references[i,:,:]))
+        coefs = np.array(coefs).transpose()
+        return coefs
+
+    def _cca_coef(self, X,Y):
+        if X.shape[1] != Y.shape[1]:
+            raise Exception('unable to apply CCA, X and Y have different dimensions')
+        z = np.vstack((X,Y))
+        C = np.cov(z)
+        sx = X.shape[0]
+        sy = Y.shape[0]
+        Cxx = C[0:sx, 0:sx] + 10**(-8)*np.eye(sx)
+        Cxy = C[0:sx, sx:sx+sy]
+        Cyx = Cxy.transpose()
+        Cyy = C[sx:sx+sy, sx:sx+sy] + 10**(-8)*np.eye(sy)
+        invCyy = np.linalg.pinv(Cyy)
+        invCxx = np.linalg.pinv(Cxx)
+        r, Wx = eig(invCxx.dot(Cxy).dot(invCyy).dot(Cyx))
+        r = sqrt(np.real(r))
+        r = np.sort(np.real(r),  axis=None)
+        r = np.flipud(r)
+        return r 
+
+class ITCCA(CCA):
+    
+    def fit(self, X, y=None):
+        stimuli_count = len(list(set(y)))
+        refs = []
+        for i in range(stimuli_count): 
+            refs.append(np.mean(X[:,:,np.where(y==i+1)].squeeze(), axis=2))
+        self.references = np.array(refs).transpose((0,2,1))
+        return self

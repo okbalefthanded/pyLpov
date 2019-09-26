@@ -43,6 +43,14 @@ def parse_config_file(config_file):
         config_dict = yaml.load(content)
     
     config_elements = config_dict.keys()
+    # check if preprocessing is defined in the config file
+    if ('ERP_preprocess' in config_elements) and ('SSVEP_preprocess' in config_elements):
+        pipelines['ERP_filter'] = config_dict['ERP_preprocess'].pop().get('parameters')
+        pipelines['SSVEP_filter'] = config_dict['SSVEP_preprocess'].pop().get('parameters')
+    else:
+        pipelines['filter'] = config_dict['preprocess'].pop().get('parameters')
+    
+    # 
     if ('ERP_pipeline' in config_elements) and ('SSVEP_pipeline' in config_elements):
         # Hybrid approach
         ERP_pipeline = create_pipeline(config_dict['ERP_pipeline'])
@@ -50,7 +58,7 @@ def parse_config_file(config_file):
         pipelines['ERP_pipeline'] = ERP_pipeline
         pipelines['SSVEP_pipeline'] = SSVEP_pipeline        
     else:
-        pipelines['pipeline'] =  create_pipeline(config_dict)
+        pipelines['pipeline'] = create_pipeline(config_dict['pipeline'])
     return pipelines    
     
 def create_pipeline(config):

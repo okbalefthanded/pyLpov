@@ -10,6 +10,7 @@ import os
 
 # Filter
 def eeg_filter(eeg, fs, low_pass, high_pass, order):
+    assert( high_pass > low_pass), 'Band-pass filtering: High cutoff frequency should be higher than low cutoff frequency'
     B,A = sig.butter(order, np.array([low_pass,high_pass],dtype=float)/(fs/2), btype='bandpass')
     return sig.filtfilt(B, A, eeg, axis=0)
     # return sig.filtfilt(B, A, eeg, axis=0, padtype='odd', padlen=3*(max(len(B),len(A))-1))

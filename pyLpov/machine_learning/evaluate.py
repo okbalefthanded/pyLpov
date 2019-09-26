@@ -5,16 +5,16 @@ from sklearn import preprocessing
 from sklearn.model_selection import KFold, cross_validate
 from sklearn.metrics import confusion_matrix
 # classifiers
+# from swlda.swlda import SWLDA
+# from blda.blda import BLDA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.linear_model import LogisticRegression
 from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.svm import SVC
-from swlda.swlda import SWLDA
-from blda.blda import BLDA
 # feature extraction
 from sklearn.gaussian_process.kernels import RBF
-from blda.feature_extraction import EPFL
-from mlr.mlr import MLR
+# from blda.feature_extraction import EPFL
+# from mlr.mlr import MLR
 # 
 from scipy.linalg import eig
 from scipy import sqrt
@@ -24,7 +24,7 @@ import numpy as np
 import pickle
 import os
 
-
+'''
 # Training function
 def train_ERP(x, y):
     print("ERP Training...")
@@ -54,9 +54,13 @@ def train_SSVEP(ssvep_x, ssvep_y):
                                 return_train_score=True)
     print("End training")
     return clf, cv_results
-
+'''
 def evaluate_pipeline(x, y, pipeline):   
-    
+    # 
+    # forcing x shape to be [n_samples, n_features]
+    if x.shape[0] != y.shape[0]:
+        x = x.transpose((2,1,0))
+
     if len(np.unique(y)) == 2:
         metrics = ('accuracy', 'roc_auc')
     else:
