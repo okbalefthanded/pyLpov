@@ -1,4 +1,4 @@
-# ovPyScripts
+# pyLpov : python-LARESI-processing-OpenVibe 
 
 - Accompanying [LARESI_BCI](https://github.com/okbalefthanded/Laresi_BCI) Python scripts for offline/online analysis and classification of EEG data in OpenVibe 
 
