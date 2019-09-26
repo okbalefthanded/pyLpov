@@ -88,7 +88,7 @@ class BLDA(BaseEstimator, ClassifierMixin):
                 print('Optimization of alpha and beta successfull')
                 print('The logevidence is ', self.evidence)
         else:
-            print('Optimization of alpha and beta did not converge after %d iterations',maxIt)
+            print('Optimization of alpha and beta did not converge after %d iterations', maxit)
             print('Giving up.')           
                    
         return self
