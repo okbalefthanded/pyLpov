@@ -1,0 +1,24 @@
+name: ERP_APPROACH
+
+preprocess:
+    - parameters:
+        epoch_duration : 0.7
+        low_pass  : 1 
+        high_pass : 10
+        order : 2
+
+
+pipeline:
+  - name: EPFL
+    from: pyLpov.features.epfl
+    parameters:
+        decimation_factor: 12
+        p: 0.1
+        
+  - name: StandardScaler
+    from: sklearn.preprocessing
+    
+  - name: BLDA
+    from: pyLpov.machine_learning.blda
+    parameters:
+        verbose: True
