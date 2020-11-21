@@ -81,7 +81,7 @@ class Predictor(OVBox):
                             
                         if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']:
                             # make final decision
-                            command = select_target(self.predictions, self.events)
+                            command = select_target(self.predictions, self.events)                            
                             self.feedback_socket.sendto(command, (self.hostname, self.feedback_port))
                             print('The command is:', command)                          
                      

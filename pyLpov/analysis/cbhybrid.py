@@ -1,7 +1,7 @@
 from pyLpov.analysis.calibration import Calibration
 from pyLpov.io.dataset import DataSet
-from pyLpov.analysis.cberp import CBERP
-from pyLpov.analysis.cbssvep import CBSSSVEP
+#from pyLpov.analysis.cberp import CBERP
+#from pyLpov.analysis.cbssvep import CBSSSVEP
 from pyLpov.machine_learning.evaluate import evaluate_pipeline
 
 

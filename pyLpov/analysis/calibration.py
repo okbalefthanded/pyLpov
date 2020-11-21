@@ -43,7 +43,7 @@ class Calibration(object):
         # dataset.get_epochs(cnt, session_interval, self.pipeline['fitler'])
         if not dataset:
             cnt, dataset = DataSet.convert_raw(self.datapath, self.paradigm)
-            dataset.get_epochs(cnt, self.pipeline['fitler'])
+            dataset.get_epochs(cnt, self.pipeline['filter'])
             self.raw_converted = True
 
         # FIXME
@@ -54,7 +54,8 @@ class Calibration(object):
             self.model, results = evaluate_pipeline(dataset.epochs, dataset.y, self.pipeline['pipeline'])  
         else:
             self.model = self.pipeline['pipeline']         
-        # fit 
+        # fit
+        print("fitting data of shapes: ", dataset.epochs.shape, dataset.y.shape)
         self.model.fit(dataset.epochs, dataset.y)        
         self.fitted = True
 
