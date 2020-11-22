@@ -7,7 +7,6 @@ preprocess:
         high_pass : 10
         order : 2
 
-
 pipeline:
   - name: EPFL
     from: pyLpov.features.epfl

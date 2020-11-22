@@ -24,7 +24,8 @@ class DataSet(object):
         #
         if isinstance(self.session_interval[0], float):
             self.session_interval = self.session_interval.astype(int)
-        epoch_duration, high_pass, low_pass, filter_order = flt_opts.values()
+        # epoch_duration, high_pass, low_pass, filter_order = flt_opts.values()
+        epoch_duration, low_pass, high_pass, filter_order = flt_opts.values()
         epoch_duration = int(np.floor(epoch_duration * self.fs))
         # filter
         signal = cnt[self.session_interval[0]:self.session_interval[1],:]
