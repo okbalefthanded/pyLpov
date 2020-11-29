@@ -12,6 +12,8 @@ class BLDA(BaseEstimator, ClassifierMixin):
         self.beta = 0
         self.w = []
         self.p = []
+        self.pos_class = 1.
+        self.neg_class = 0.
         self.verbose = verbose
     
     def fit(self, X, y=None):
@@ -24,18 +26,14 @@ class BLDA(BaseEstimator, ClassifierMixin):
         y = y.astype(np.float32)
         y = y.T
         classes = np.unique(y)
-        if 0 in classes:
-            neg_class = 0.
-            pos_class = 1.
-        else:
-            neg_class = -1.
-            pos_class = 1.
+        if -1 in classes:
+            self.neg_class = -1.            
         
-        n_posexamples = np.sum(y==pos_class)
-        n_negexamples = np.sum(y==neg_class)
+        n_posexamples = np.sum(y==self.pos_class)
+        n_negexamples = np.sum(y==self.neg_class)
         n_examples = n_posexamples + n_negexamples
-        y[y==pos_class] = n_examples / n_posexamples
-        y[y==neg_class] = -n_examples / n_negexamples
+        y[y==self.pos_class] = n_examples / n_posexamples
+        y[y==self.neg_class] = -n_examples / n_negexamples
         
         # add feature that is constantly one (bias term)
         if X.shape[0] == n_instances:
@@ -69,7 +67,7 @@ class BLDA(BaseEstimator, ClassifierMixin):
             m = beta * np.dot(v , np.multiply( np.power(beta*d+np.vstack((alpha*e, biasalpha)), -1), vxy) )            
             err = np.sum( np.power( y-np.dot(m.T,X), 2 ) )            
             gamma = np.sum(  np.true_divide(beta*d, beta*d+np.vstack((alpha*e, biasalpha))) )
-            alpha = gamma / np.asscalar(np.dot(m.T,m))
+            alpha = gamma / np.dot(m.T,m).item()
             beta  = (n_examples - gamma) / err
             if self.verbose:
                 print('Iteration %d : alpha = %f, beta = %f\n' % (i,alpha,beta) )            
@@ -102,17 +100,22 @@ class BLDA(BaseEstimator, ClassifierMixin):
                    
         return self
          
-    def decision_function(self, X):
+    def decision_function(self,X):
         X = X.T
         X = np.vstack( (X, np.ones((1,X.shape[1]))) )
         return np.dot(X.T, self.w) 
     
     def predict(self, X, y=None):
-        return self.decision_function(X)
-            
+        scores = self.score(X).squeeze()
+        predictions = np.zeros(len(scores))
+        predictions[scores > 0.] = 1.
+        if self.neg_class == -1:
+          predictions[scores <= 0.] = -1
+        return predictions          
+        # return self.decision_function(X)            
     
-    def score(self, X, y=None):
-        pass
+    def score(self,X, y=None):
+        return self.decision_function(X)
     
     def predict_proba(self,X):
         pass
