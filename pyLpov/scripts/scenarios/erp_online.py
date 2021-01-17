@@ -19,6 +19,7 @@ class ERPOnline(OVBox):
         self.fs = 512
         self.channels = 0
         self.mode = None
+        self.stimulation = "Single"
         # self.signal = []
         self.signal =np.array([])
         self.tmp_list = []
@@ -125,8 +126,12 @@ class ERPOnline(OVBox):
         self.erp_stims_time = self.tmp_list 
         self.erp_stims = np.array(self.erp_stims)                          
         self.erp_end = int(np.floor(stim.date * self.fs)) 
-        self.erp_y = np.array(self.erp_y)                                                     
-        mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin                          
+        self.erp_y = np.array(self.erp_y) 
+        mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin
+        if self.stimulation == 'Multi':
+           mrk = mrk[::3] 
+                                                    
+        # mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin                          
         erp_signal = processing.eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)                            
         erp_epochs = processing.eeg_epoch(erp_signal, np.array([0, self.erp_epochDuration],dtype=int), mrk)
         self.erp_x = erp_epochs
@@ -143,8 +148,9 @@ class ERPOnline(OVBox):
         self.erp_downSample = int(self.setting["Downsample Factor"])
         self.erp_epochDuration = np.ceil(float(self.setting["ERP Epoch Duration (in sec)"]) * self.fs).astype(int)
         self.erp_movingAverage = int(self.setting["ERP Moving Average"])
-        self.erp_model_path = self.setting["ERP Classifier"]
+        self.erp_model_path = self.setting["Classifier"]
         self.erp_model = pickle.load(open(self.erp_model_path, 'rb'))
+        self.stimulation = str(self.setting["Stimulation"])
 
     def process(self):        
         
