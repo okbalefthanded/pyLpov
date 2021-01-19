@@ -3,11 +3,13 @@ from sklearn.metrics import confusion_matrix
 from scipy.linalg import eig
 from scipy import sqrt
 import numpy as np
+import pandas as pd
 import pickle
 import socket
 import logging
 import os
 
+np.set_printoptions(precision=4)
 OVTK_StimulationLabel_Base = 0x00008100
 
 def cca(X,Y):
@@ -49,7 +51,8 @@ class SSVEPpredictor(OVBox):
         self.target_stimulations = []
         self.events = []
         self.trials_count = 0
-        self.frequencies = ['idle', 14, 12, 10, 8]
+        # self.frequencies = ['idle', 14, 12, 10, 8]
+        self.frequencies = [14,12, 10, 8]
         self.num_harmonics = 0
         self.epoch_duration = 0
         self.fs = 512
@@ -78,12 +81,13 @@ class SSVEPpredictor(OVBox):
         t = np.arange(0.0, float(self.samples)) / self.fs
         if self.frequencies[0] == 'idle':
             frequencies = self.frequencies[1:]
+        else:
+            frequencies = self.frequencies
         # generate reference signals
         x = [ [np.cos(2*np.pi*f*t*i),np.sin(2*np.pi*f*t*i)] for f in frequencies for i in range(1, self.num_harmonics+1)]
         self.references = np.array(x).reshape(len(frequencies), 2*self.num_harmonics, self.samples)  
         
 
-    
     def process(self):
         # 
         if self.input[1]:
@@ -102,7 +106,8 @@ class SSVEPpredictor(OVBox):
 
                         if stim.identifier > OVTK_StimulationLabel_Base and stim.identifier <= OVTK_StimulationLabel_Base+len(self.frequencies):
                             self.target_stimulations.append(stim.identifier - OVTK_StimulationLabel_Base)
-                            print("target is: ", self.frequencies[self.target_stimulations[-1]])
+                            print("target is: ", self.frequencies[self.target_stimulations[-1]-1])
+                            # print("target is: ", self.target_stimulations)
                         
                         if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']:
                             print('Trial Stop... ')
@@ -133,17 +138,15 @@ class SSVEPpredictor(OVBox):
                     self.command = str(command)
                     self.predictions.append(command)
                     self.do_feedback = True                    
-                    print('Frequency detected %s Hz' %(self.frequencies[command]))  
+                    print('(Frequency detected %s Hz with score %s)' %(self.frequencies[command-1], r.max(axis=0)))  
 
         if self.trial_ended and self.do_feedback:
             print('Sending as feedback: ', self.command)
             print('Sending feedback now: ', pd.to_datetime('now'))
-            self.feedback_socket.sendto(self.command, (self.hostname, self.feedback_port))
+            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.feedback_port))
             # print('time of sending: ', self.getCurrentTime())
             logging.info('feedback sent')
-            self.do_feedback = False
-
-                    
+            self.do_feedback = False                   
 
     
     def uninitialize(self):

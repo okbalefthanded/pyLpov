@@ -59,7 +59,6 @@ class Calibration(object):
         self.model.fit(dataset.epochs, dataset.y)        
         self.fitted = True
 
-
     def save(self):
         # save fitted model to outdir             
         model_name = '_'.join([self.paradigm.paradigmType, self.pipeline['pipeline'].steps[-1][0],'py.clf'])

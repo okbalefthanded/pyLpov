@@ -19,6 +19,7 @@ class ERPOnline(OVBox):
         self.fs = 512
         self.channels = 0
         self.mode = None
+        self.stimulation = "Single"
         # self.signal = []
         self.signal =np.array([])
         self.tmp_list = []
@@ -48,7 +49,7 @@ class ERPOnline(OVBox):
         self.ends = 0
         self.nChunks = 0
         self.chunk = 0
-        self.switch = False
+        # self.switch = False
         # self.stream_signal = False  
         #
         self.feedback_data = 0
@@ -125,8 +126,12 @@ class ERPOnline(OVBox):
         self.erp_stims_time = self.tmp_list 
         self.erp_stims = np.array(self.erp_stims)                          
         self.erp_end = int(np.floor(stim.date * self.fs)) 
-        self.erp_y = np.array(self.erp_y)                                                     
-        mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin                          
+        self.erp_y = np.array(self.erp_y) 
+        mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin
+        if self.stimulation == 'Multi':
+           mrk = mrk[::3] 
+                                                    
+        # mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin                          
         erp_signal = processing.eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)                            
         erp_epochs = processing.eeg_epoch(erp_signal, np.array([0, self.erp_epochDuration],dtype=int), mrk)
         self.erp_x = erp_epochs
@@ -143,8 +148,9 @@ class ERPOnline(OVBox):
         self.erp_downSample = int(self.setting["Downsample Factor"])
         self.erp_epochDuration = np.ceil(float(self.setting["ERP Epoch Duration (in sec)"]) * self.fs).astype(int)
         self.erp_movingAverage = int(self.setting["ERP Moving Average"])
-        self.erp_model_path = self.setting["ERP Classifier"]
+        self.erp_model_path = self.setting["Classifier"]
         self.erp_model = pickle.load(open(self.erp_model_path, 'rb'))
+        self.stimulation = str(self.setting["Stimulation"])
 
     def process(self):        
         
@@ -161,33 +167,35 @@ class ERPOnline(OVBox):
                         stim = chunk.pop()               
                         # print('Received Marker: ', stim.identifier, 'stamped at', stim.date, 's')                        
                         # ERP session                        
-                        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch):                       
+                        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):                       
                             print('[ERP trial start]', stim.date)
 
                             if(len(self.erp_stims_time) == 0):
                                 self.erp_begin = int(np.floor(stim.date * self.fs))                                
                         
                         if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_Target'] or 
-                            stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_NonTarget']) and not self.switch: 
+                            stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_NonTarget']): 
                             self.mode = 'Copy'
                             self.erp_y.append(stim.identifier - OpenViBE_stimulation['OVTK_StimulationId_Target'])
                          
-                        if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OpenViBE_stimulation['OVTK_StimulationId_LabelEnd'] and not self.switch) :
+                        if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OpenViBE_stimulation['OVTK_StimulationId_LabelEnd']) :
                             self.erp_stims.append(stim.identifier - OVTK_StimulationLabel_Base) 
                             # print('[ERP stim]', stim.date, self.erp_stims[-1])
                             self.tmp_list.append(np.floor(stim.date*self.fs))        
 
-                        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and not self.switch):                            
+                        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']):                            
                             print('[ERP trial stop]', stim.date)  
 
                             self.filter_and_epoch(stim)                            
                             predictions = self.erp_model.predict(self.erp_x)
-                            self.command, idx = utils.select_target(predictions, self.erp_stims, commands) 
+                            print(predictions, len(predictions))
+                            # self.command, idx = utils.select_target(predictions, self.erp_stims, commands, self.stimulation) 
 
-                            print('[ERP] Command to send is: ', self.command)
-                           
-                            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                       
-                                                       
+                            # print('[ERP] Command to send is: ', self.command)
+                            print(self.erp_stims, len(self.erp_stims)) 
+                            self.command = 1
+                            # self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                                                 
+                                                      
                             self.erp_pred.append(self.command)
                             self.print_if_target()  
                             self.init_data()
