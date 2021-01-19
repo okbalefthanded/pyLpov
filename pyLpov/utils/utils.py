@@ -33,6 +33,18 @@ def select_target(predictions, events, commands):
 
     return feedback_data, scores.index(max(scores))
 
+
+def select_target_multistim(predictions, events):
+    '''
+    '''
+    scores = predictions.sum(axis=0) / np.unique(events).size
+    stim_type = scores.argmax()
+    evs = events[predictions[:,stim_type] == 1, stim_type]
+    unique, counts = np.unique(evs, return_counts=True)
+    feedback_data = unique[counts.argmax()].astype(int)
+    return feedback_data, scores
+
+
 def parse_config_file(config_file):
     # yaml_files = ['config.yml']
     pipelines = {}
