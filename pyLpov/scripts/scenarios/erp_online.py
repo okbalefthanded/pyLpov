@@ -138,6 +138,26 @@ class ERPOnline(OVBox):
         del erp_signal
         del erp_epochs
         del mrk
+
+    def predict(self, commands):
+        '''
+        '''
+        if self.stimulation == 'Single':
+            predictions = self.erp_model.predict(self.erp_x)
+            print(predictions, len(predictions))
+            self.command, idx = utils.select_target(predictions, self.erp_stims, commands, self.stimulation)
+        elif self.stimulation == 'Multi':
+            predictions = []
+            events = np.array(self.erp_stims)
+            events = events.reshape((len(events)//3, 3))
+            events = np.flip(events, axis=1)
+            for model in self.erp_model:
+                predictions.append(model.predict(self.erp_x))
+            self.command, scores = utils.select_target_multistim(np.array(predictions).T, events)
+            print(scores)
+            del predictions
+            del events
+        
     
     def initialize(self):
         self.fs = int(self.setting["Sample Rate"])
@@ -186,15 +206,15 @@ class ERPOnline(OVBox):
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']):                            
                             print('[ERP trial stop]', stim.date)  
 
-                            self.filter_and_epoch(stim)                            
-                            predictions = self.erp_model.predict(self.erp_x)
-                            print(predictions, len(predictions))
-                            # self.command, idx = utils.select_target(predictions, self.erp_stims, commands, self.stimulation) 
+                            self.filter_and_epoch(stim)
+                            self.predict(commands)
+                            
+                            # predictions = self.erp_model.predict(self.erp_x)
+                            # print(predictions, len(predictions))
+                            # self.command, idx = utils.select_target(predictions, self.erp_stims, commands) 
 
-                            # print('[ERP] Command to send is: ', self.command)
-                            print(self.erp_stims, len(self.erp_stims)) 
-                            self.command = 1
-                            # self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                                                 
+                            print('[ERP] Command to send is: ', self.command)
+                            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                                                 
                                                       
                             self.erp_pred.append(self.command)
                             self.print_if_target()  

@@ -41,7 +41,10 @@ def select_target_multistim(predictions, events):
     stim_type = scores.argmax()
     evs = events[predictions[:,stim_type] == 1, stim_type]
     unique, counts = np.unique(evs, return_counts=True)
-    feedback_data = unique[counts.argmax()].astype(int)
+    if counts.size == 0:
+        feedback_data = '#'
+    else:
+        feedback_data = unique[counts.argmax()].astype(int)
     return feedback_data, scores
 
 
