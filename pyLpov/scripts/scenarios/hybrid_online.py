@@ -21,6 +21,7 @@ class HybridOnline(OVBox):
         self.fs = 512
         self.channels = 0
         self.mode = None
+        self.erp_stimulation = 'Single' 
         # self.signal = []
         self.signal =np.array([])
         self.tmp_list = []
@@ -81,6 +82,7 @@ class HybridOnline(OVBox):
     def initialize(self):
         self.fs = int(self.setting["Sample Rate"])
         #
+        self.erp_stimuation = str(self.setting['ERP Stimulation'])
         self.erp_lowPass = int(self.setting["ERP Low Pass"])
         self.erp_highPass = int(self.setting["ERP High Pass"])
         self.erp_filterOrder = int(self.setting["ERP Filter Order"])
@@ -88,7 +90,7 @@ class HybridOnline(OVBox):
         self.erp_epochDuration = np.ceil(float(self.setting["ERP Epoch Duration (in sec)"]) * self.fs).astype(int)
         self.erp_movingAverage = int(self.setting["ERP Moving Average"])
         self.erp_model_path = self.setting["ERP Classifier"]
-        self.erp_model = pickle.load(open(self.erp_model_path, 'rb'))
+        self.erp_model = pickle.load(open(self.erp_model_path, 'rb'),  encoding='latin1')
         #
         self.ssvep_lowPass = int(self.setting["SSVEP Low Pass"])
         self.ssvep_highPass = int(self.setting["SSVEP High Pass"])
@@ -105,7 +107,7 @@ class HybridOnline(OVBox):
             x = [ [np.cos(2*np.pi*f*t*i),np.sin(2*np.pi*f*t*i)] for f in frequencies for i in range(1, self.ssvep_n_harmonics+1)]
             self.ssvep_references = np.array(x).reshape(len(frequencies), 2*self.ssvep_n_harmonics, self.ssvep_samples)
         elif self.ssvep_mode == 'async':
-            self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb'))
+            self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb'),  encoding='latin1')
             # generate reference by itcca method
             self.ssvep_references = self.ssvep_model
         
@@ -171,12 +173,13 @@ class HybridOnline(OVBox):
                             # print('ERP shape: ', self.erp_x.shape)
                             # self.erp_x = eeg_feature(erp_epochs, self.erp_downSample, self.erp_movingAverage)
                             
-                            predictions = self.erp_model.predict(self.erp_x)
+                            # predictions = self.erp_model.predict(self.erp_x)
                             # predictions = self.erp_model.decision_function(self.erp_x)
-                            self.command, idx = utils.select_target(predictions, self.erp_stims, commands)                        
+                            # self.command, idx = utils.select_target(predictions, self.erp_stims, commands)                     
+                            self.command = '1'
                             print('[ERP] Command to send is: ', self.command)
                            
-                            self.feedback_socket.sendto(self.command, (self.hostname, self.erp_feedback_port))                       
+                            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                       
                             # switch to SSVEP, free memory
                             self.erp_y[self.erp_y == 1] = -1
                             self.erp_y[self.erp_y == 0] = 1
@@ -212,7 +215,7 @@ class HybridOnline(OVBox):
 
                             if stim.identifier >= OVTK_StimulationLabel_Base and stim.identifier <= OVTK_StimulationLabel_Base+len(self.ssvep_frequencies):
                                 self.ssvep_y.append(stim.identifier - OVTK_StimulationLabel_Base)
-                                # print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
+                                print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
                                 self.ssvep_stims_time.append(np.floor(stim.date*self.fs)) 
 
                             if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and self.ssvep_y):
@@ -221,15 +224,20 @@ class HybridOnline(OVBox):
                                 self.ssvep_end = int(np.floor(stim.date*self.fs))                                
                                 # SSVEP                                
                                 self.ssvep_stims_time = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin                                                             
+                                print(f"ssvep time: {self.ssvep_stims_time}")
+                                print(f"ssvep begin {self.ssvep_begin} ssvep end {self.ssvep_end}")
                                 ssvep_signal = processing.eeg_filter(self.signal[:,self.ssvep_begin:self.ssvep_end].T, self.fs, self.ssvep_lowPass, self.ssvep_highPass, self.ssvep_filterOrder)   
+                                print(f"ssvep signal {ssvep_signal.shape}")
                                 ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([0, self.ssvep_samples],dtype=int), self.ssvep_stims_time).squeeze()                                                      
                                                                 
                                 if self.ssvep_mode == 'sync':                
                                     sync_trials = np.where(self.ssvep_y != 1)
-                                    ssvep_sync_epochs = ssvep_epochs[:,:,sync_trials].squeeze()
+                                    # ssvep_sync_epochs = ssvep_epochs[:,:,sync_trials].squeeze()
+                                    ssvep_sync_epochs = ssvep_epochs
                                     ssvep_predictions = []                                    
-                                    ssvep_predictions.append(cca.predict(cca.apply_cca(ssvep_sync_epochs[0:self.ssvep_samples,:].transpose((1,0)), self.ssvep_references)) + 1)
-                                    
+                                    # ssvep_predictions.append(cca.predict(cca.apply_cca(ssvep_sync_epochs[0:self.ssvep_samples,:].transpose((1,0)), self.ssvep_references)) + 1)
+                                    ssvep_predictions.append(cca.predict(ssvep_sync_epochs[0:self.ssvep_samples,:].transpose((1,0)), self.ssvep_references) + 1)
+
                                 elif self.ssvep_mode == 'async':
                                     ssvep_predictions = self.ssvep_model.predict(ssvep_epochs)
 

@@ -129,9 +129,7 @@ class ERPOnline(OVBox):
         self.erp_y = np.array(self.erp_y) 
         mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin
         if self.stimulation == 'Multi':
-           mrk = mrk[::3] 
-                                                    
-        # mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin                          
+            mrk = mrk[::3]                          
         erp_signal = processing.eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)                            
         erp_epochs = processing.eeg_epoch(erp_signal, np.array([0, self.erp_epochDuration],dtype=int), mrk)
         self.erp_x = erp_epochs
@@ -142,12 +140,11 @@ class ERPOnline(OVBox):
     def predict(self, commands):
         '''
         '''
+        predictions = []
         if self.stimulation == 'Single':
             predictions = self.erp_model.predict(self.erp_x)
-            print(predictions, len(predictions))
-            self.command, idx = utils.select_target(predictions, self.erp_stims, commands, self.stimulation)
-        elif self.stimulation == 'Multi':
-            predictions = []
+            self.command, idx = utils.select_target(predictions, self.erp_stims, commands)
+        elif self.stimulation == 'Multi':            
             events = np.array(self.erp_stims)
             events = events.reshape((len(events)//3, 3))
             events = np.flip(events, axis=1)
@@ -208,10 +205,6 @@ class ERPOnline(OVBox):
 
                             self.filter_and_epoch(stim)
                             self.predict(commands)
-                            
-                            # predictions = self.erp_model.predict(self.erp_x)
-                            # print(predictions, len(predictions))
-                            # self.command, idx = utils.select_target(predictions, self.erp_stims, commands) 
 
                             print('[ERP] Command to send is: ', self.command)
                             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                                                 

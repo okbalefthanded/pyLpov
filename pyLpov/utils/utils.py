@@ -29,7 +29,7 @@ def select_target(predictions, events, commands):
     #    print self.scores
         feedback_data = '#'
     else:
-       feedback_data = commands[scores.index(max(scores))]
+        feedback_data = commands[scores.index(max(scores))]
 
     return feedback_data, scores.index(max(scores))
 
@@ -45,7 +45,7 @@ def select_target_multistim(predictions, events):
         feedback_data = '#'
     else:
         feedback_data = unique[counts.argmax()].astype(int)
-    return feedback_data, scores
+    return str(feedback_data), scores
 
 
 def parse_config_file(config_file):
