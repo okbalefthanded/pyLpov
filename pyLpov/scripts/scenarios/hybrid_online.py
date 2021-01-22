@@ -8,7 +8,7 @@ import socket
 import logging
 import pickle
 import os
-import gc
+
 
 OVTK_StimulationLabel_Base = 0x00008100
 commands = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
@@ -22,7 +22,6 @@ class HybridOnline(OVBox):
         self.channels = 0
         self.mode = None
         self.erp_stimulation = 'Single' 
-        # self.signal = []
         self.signal =np.array([])
         self.tmp_list = []
         self.n_trials = 0
@@ -71,7 +70,7 @@ class HybridOnline(OVBox):
         self.nChunks = 0
         self.chunk = 0
         self.switch = False
-        self.stream_signal = False  
+        # self.stream_signal = False  
         #
         self.feedback_data = 0
         self.hostname = '127.0.0.1'
@@ -90,8 +89,8 @@ class HybridOnline(OVBox):
         self.erp_epochDuration = np.ceil(float(self.setting["ERP Epoch Duration (in sec)"]) * self.fs).astype(int)
         self.erp_movingAverage = int(self.setting["ERP Moving Average"])
         self.erp_model_path = self.setting["ERP Classifier"]
-        self.erp_model = pickle.load(open(self.erp_model_path, 'rb'),  encoding='latin1') # py3
-        # self.erp_model = pickle.load(open(self.erp_model_path, 'rb')) #py2
+        # self.erp_model = pickle.load(open(self.erp_model_path, 'rb'),  encoding='latin1') # py3
+        self.erp_model = pickle.load(open(self.erp_model_path, 'rb')) #py2
         #
         self.ssvep_lowPass = int(self.setting["SSVEP Low Pass"])
         self.ssvep_highPass = int(self.setting["SSVEP High Pass"])
@@ -114,28 +113,219 @@ class HybridOnline(OVBox):
             # self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb')) #py2
             # generate reference by itcca method
             self.ssvep_references = self.ssvep_model
-        
 
-    def process(self):        
-        
-        # stream signal
-        if self.input[0]:            
-            signal_chunk = self.input[0].pop()
+    def stream_signal(self):
+        '''
+        '''
+        signal_chunk = self.input[0].pop()
 
-            if type(signal_chunk) == OVSignalHeader:
+        if type(signal_chunk) == OVSignalHeader:
                 self.channels, self.chunk = signal_chunk.dimensionSizes
 
-            elif type(signal_chunk) == OVSignalBuffer:
-                # print(self.getCurrentTime())
-                # if(self.getCurrentTime() >= self.erp_begin): 
-                # if (self.stream_signal):                                       
+        elif type(signal_chunk) == OVSignalBuffer:                                       
                 tmp = [signal_chunk[i:i+self.chunk] for i in range(0, len(signal_chunk), self.chunk)]
                 tmp = np.array(tmp)               
                 self.signal = np.hstack((self.signal, tmp)) if self.signal.size else tmp                
                 self.nChunks += 1                
                 del tmp          
             
-            del signal_chunk        
+        del signal_chunk
+
+    def filter_and_epoch(self, paradigm, stim):
+        '''
+        '''
+        if paradigm == 'ERP':
+            self.erp_stims_time = self.tmp_list 
+            begin = self.erp_begin            
+            samples = self.erp_epochDuration                        
+            self.erp_y = np.array(self.erp_y)
+            mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin
+            if self.erp_stimulation == 'Multi':
+                    mrk = mrk[::3] 
+            low_pass = self.erp_lowPass
+            high_pass = self.erp_highPass
+            order = self.erp_filterOrder
+
+        elif paradigm == 'SSVEP':
+            begin = self.ssvep_begin                                                                                                                       
+            mrk = np.array(self.ssvep_stims_time).astype(int) - begin
+            samples = self.ssvep_samples
+            low_pass = self.ssvep_lowPass
+            high_pass = self.ssvep_highPass
+            order = self.ssvep_filterOrder
+                         
+        end = int(np.floor(stim.date * self.fs))                           
+        signal = processing.eeg_filter(self.signal[:, begin:end].T, self.fs, low_pass, high_pass, order)                            
+        epochs = processing.eeg_epoch(signal, np.array([0, samples],dtype=int), mrk)
+        
+        del signal        
+        del mrk
+        
+        return epochs
+
+    def erp_predict(self):
+        '''
+        '''
+        self.erp_stims = np.array(self.erp_stims) 
+        predictions = []
+        if self.erp_stimulation == 'Single':
+            predictions = self.erp_model.predict(self.erp_x)
+            self.command, idx = utils.select_target(predictions, self.erp_stims, commands)
+        elif self.erp_stimulation == 'Multi':            
+            events = self.erp_stims
+            events = events.reshape((len(events)//3, 3))
+            events = np.flip(events, axis=1)
+            for model in self.erp_model:
+                predictions.append(model.predict(self.erp_x))
+            self.command, scores = utils.select_target_multistim(np.array(predictions).T, events)
+            print(scores)
+            del predictions
+            del events
+
+    def print_if_target(self, paradigm):
+        '''
+        '''
+        if paradigm ==  'ERP':            
+            self.erp_y[self.erp_y == 1] = -1
+            self.erp_y[self.erp_y == 0] = 1
+        
+            if self.mode == 'Copy':
+                tg = np.where(self.erp_y == 1)                               
+                print('[ERP Target] : ', self.erp_stims[tg[0][0]] )
+                self.erp_target.append(self.erp_stims[tg[0][0]]) 
+                if self.command == '#':
+                    print('NO ERP detection ...')
+                elif int(self.command) == self.erp_stims[tg[0][0]]:                               
+                    print('[ERP Correct! ]')
+                    self.erp_correct += 1
+        
+        elif paradigm == 'SSVEP':
+            self.ssvep_y = np.array(self.ssvep_y)
+            if self.mode == 'Copy':
+                print('[SSVEP] preds:', self.command, ' target:', self.ssvep_y)
+                if int(self.command) == self.ssvep_y:
+                    self.ssvep_correct += 1
+                self.ssvep_target.append(self.ssvep_y[-1])
+
+    def ssvep_predict(self):
+        '''
+        '''
+        if self.ssvep_mode == 'sync':                
+            # sync_trials = np.where(self.ssvep_y != 1)
+            # ssvep_sync_epochs = ssvep_epochs[:,:,sync_trials].squeeze()
+            ssvep_epochs = self.ssvep_x.squeeze()
+            ssvep_sync_epochs = ssvep_epochs
+            ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[0:self.ssvep_samples,:].transpose((1,0))) + 1                                  
+            ssvep_predictions = np.array(ssvep_predictions)
+                                
+        elif self.ssvep_mode == 'async':
+            # ssvep_predictions = self.ssvep_model.predict(ssvep_epochs)
+            ssvep_predictions = self.ssvep_model.predict(self.ssvep_x)
+
+        self.command = str(ssvep_predictions.item())
+
+    def print_results(self):
+        '''
+        '''
+        print('Trial N :', self.n_trials, ' / ERP Target : ', self.erp_target)
+        print('Trial N :', self.n_trials, ' / ERP Pred : ', self.erp_pred)
+        print('Trial N :', self.n_trials, ' / SSVEP Target : ', self.ssvep_target)
+        print('Trial N :', self.n_trials, ' / SSVEP Pred : ', self.ssvep_pred)
+        print('Trial N :', self.n_trials, ' / ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100, '/  SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100 )                              
+
+    def experiment_end(self):
+        '''
+        '''
+        print('EXPERIMENT ENDS')
+        print(' ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100)
+        print(' SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)                           
+        self.switch = False
+        del self.signal
+        del self.erp_x
+        del self.erp_model
+        del self.ssvep_x
+        del self.ssvep_model
+        stimSet = OVStimulationSet(0.,0.)    
+        stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0.,0.)) 
+        self.output[0].append(stimSet)
+
+    def ERP_trial(self, stim):
+        '''
+        '''
+        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch):                       
+            print('[ERP trial start]', stim.date)
+            self.ssvep_y = []
+            self.ssvep_stims_time = []                          
+            if(len(self.erp_stims_time) == 0):
+                self.erp_begin = int(np.floor(stim.date * self.fs))                                
+                        
+        if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_Target'] or 
+            stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_NonTarget']) and not self.switch: 
+            self.mode = 'Copy'
+            self.erp_y.append(stim.identifier - OpenViBE_stimulation['OVTK_StimulationId_Target'])
+                         
+        if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OpenViBE_stimulation['OVTK_StimulationId_LabelEnd'] and not self.switch) :
+            self.erp_stims.append(stim.identifier - OVTK_StimulationLabel_Base) 
+            # print('[ERP stim]', stim.date, self.erp_stims[-1])
+            self.tmp_list.append(np.floor(stim.date*self.fs))        
+
+        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and not self.switch):                            
+            print('[ERP trial stop]', stim.date)
+
+            self.erp_x = self.filter_and_epoch('ERP', stim)
+            self.erp_predict()
+                            
+            print('[ERP] Command to send is: ', self.command)
+                           
+            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))
+            self.erp_pred.append(self.command)                       
+                            
+            self.print_if_target('ERP')
+            # switch to SSVEP, free memory
+            self.erp_x = []
+            self.tmp_list = []
+            self.switch = True
+
+    def SSVEP_trial(self, stim):
+        '''
+        '''
+        self.erp_stims = []
+        self.erp_stims_time = []
+        self.erp_y = []
+
+        if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):                                
+            print('[SSVEP trial start]', stim.date)
+            self.ssvep_begin = int(np.floor(stim.date * self.fs))                             
+                            
+        if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_VisualSteadyStateStimulationStart']):
+            print('[SSVEP Visual_stim_start]', stim.date)
+                            
+        if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OVTK_StimulationLabel_Base+len(self.ssvep_frequencies)):
+            self.ssvep_y.append(stim.identifier - OVTK_StimulationLabel_Base)
+            print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
+            self.ssvep_stims_time.append(np.floor(stim.date*self.fs)) 
+
+        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and self.ssvep_y):        
+            print('[SSVEP trial stop]', stim.date)                                                              
+            self.ssvep_x = self.filter_and_epoch('SSVEP', stim)
+            self.ssvep_predict()
+
+            print('[SSVEP] Sending as feedback: ', self.command)                                                               
+            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.ssvep_feedback_port))                                
+            self.ssvep_pred.append(self.command)
+
+            self.print_if_target('SSVEP')                                       
+                                
+            self.switch = False
+            self.n_trials += 1   
+
+            self.print_results()            
+
+    def process(self):        
+        
+        # stream signal
+        if self.input[0]:            
+            self.stream_signal()
         
         # collect Stimulations markers and times for each paradigm
         if self.input[1]:
@@ -144,151 +334,17 @@ class HybridOnline(OVBox):
                 for stimIdx in range(len(chunk)):
                     if chunk:
                         stim = chunk.pop()               
-                        # print('Received Marker: ', stim.identifier, 'stamped at', stim.date, 's')                        
-                        # ERP session                        
-                        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch):                       
-                            print('[ERP trial start]', stim.date)
-                            self.ssvep_y = []
-                            self.ssvep_stims_time = []
-                            # self.tmp_list = []                            
-                            if(len(self.erp_stims_time) == 0):
-                                self.erp_begin = int(np.floor(stim.date * self.fs))                                
-                        
-                        if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_Target'] or 
-                            stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_NonTarget']) and not self.switch: 
-                            self.mode = 'Copy'
-                            self.erp_y.append(stim.identifier - OpenViBE_stimulation['OVTK_StimulationId_Target'])
-                         
-                        if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OpenViBE_stimulation['OVTK_StimulationId_LabelEnd'] and not self.switch) :
-                            self.erp_stims.append(stim.identifier - OVTK_StimulationLabel_Base) 
-                            # print('[ERP stim]', stim.date, self.erp_stims[-1])
-                            self.tmp_list.append(np.floor(stim.date*self.fs))        
 
-                        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and not self.switch):                            
-                            print('[ERP trial stop]', stim.date)
-                            self.erp_stims_time = self.tmp_list 
-                            self.erp_stims = np.array(self.erp_stims)                          
-                            self.erp_end = int(np.floor(stim.date * self.fs)) 
-                            self.erp_y = np.array(self.erp_y)                                                     
-                            mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin                          
-                            erp_signal = processing.eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)                            
-                            erp_epochs = processing.eeg_epoch(erp_signal, np.array([0, self.erp_epochDuration],dtype=int), mrk)
-                            self.erp_x = erp_epochs
-                            # print('ERP shape: ', self.erp_x.shape)
-                            # self.erp_x = eeg_feature(erp_epochs, self.erp_downSample, self.erp_movingAverage)
-                            
-                            # predictions = self.erp_model.predict(self.erp_x)
-                            # predictions = self.erp_model.decision_function(self.erp_x)
-                            # self.command, idx = utils.select_target(predictions, self.erp_stims, commands)                     
-                            self.command = '1'
-                            print('[ERP] Command to send is: ', self.command)
-                           
-                            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                       
-                            # switch to SSVEP, free memory
-                            self.erp_y[self.erp_y == 1] = -1
-                            self.erp_y[self.erp_y == 0] = 1
-                            
-                            self.erp_pred.append(self.command)
-                            if self.mode == 'Copy':
-                                tg = np.where(self.erp_y == 1)                               
-                                print('[ERP Target] : ', self.erp_stims[tg[0][0]] )
-                                self.erp_target.append(self.erp_stims[tg[0][0]]) 
-                                if self.command == '#':
-                                    print('NO ERP detection ...')
-                                elif int(self.command) == self.erp_stims[tg[0][0]]:                               
-                                    print('[ERP Correct! ]')
-                                    self.erp_correct += 1
-                        
-                            self.erp_x = []
-                            del erp_signal
-                            del erp_epochs
-                            del mrk
-                            self.tmp_list = []
-                            self.switch = True                                                                                                  
+                        # ERP session
+                        self.ERP_trial(stim)
 
                         # SSVEP session
                         if self.switch:
-                                                    
-                            self.erp_stims = []
-                            self.erp_stims_time = []
-                            self.erp_y = []
-                            if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):                                
-                                # self.stream_signal = True
-                                print('[SSVEP trial start]', stim.date)
-                                self.ssvep_begin = int(np.floor(stim.date * self.fs))                             
-                            
-                            if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_VisualSteadyStateStimulationStart']):
-                                print('[SSVEP Visual_stim_start]', stim.date)
-                            
-                            if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OVTK_StimulationLabel_Base+len(self.ssvep_frequencies)):
-                                self.ssvep_y.append(stim.identifier - OVTK_StimulationLabel_Base)
-                                print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
-                                self.ssvep_stims_time.append(np.floor(stim.date*self.fs)) 
-
-                            if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and self.ssvep_y):
-                                print('[SSVEP trial stop]', stim.date)                               
-                                
-                                self.ssvep_end = int(np.floor(stim.date*self.fs))                                                                
-                                # SSVEP                                
-                                self.ssvep_stims_time = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin                                                             
-                                print(f"ssvep time: {self.ssvep_stims_time}")
-                                print(f"ssvep begin {self.ssvep_begin} ssvep end {self.ssvep_end}")
-                                ssvep_signal = processing.eeg_filter(self.signal[:,self.ssvep_begin:self.ssvep_end].T, self.fs, self.ssvep_lowPass, self.ssvep_highPass, self.ssvep_filterOrder)   
-                                print(f"ssvep signal {ssvep_signal.shape}")
-                                ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([0, self.ssvep_samples],dtype=int), self.ssvep_stims_time).squeeze()                                                      
-                                print(f"ssvep epoch {ssvep_epochs.shape}")
-                                if self.ssvep_mode == 'sync':                
-                                    sync_trials = np.where(self.ssvep_y != 1)
-                                    # ssvep_sync_epochs = ssvep_epochs[:,:,sync_trials].squeeze()
-                                    ssvep_sync_epochs = ssvep_epochs
-                                    # ssvep_predictions = []
-                                    ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[0:self.ssvep_samples,:].transpose((1,0))) + 1                                  
-                                    ssvep_predictions = np.array(ssvep_predictions)
-                                    # ssvep_predictions.append(cca.predict(cca.apply_cca(ssvep_sync_epochs[0:self.ssvep_samples,:].transpose((1,0)), self.ssvep_references)) + 1)
-                                    # ssvep_predictions.append(cca.predict(ssvep_sync_epochs[0:self.ssvep_samples,:].transpose((1,0)), self.ssvep_references) + 1)
-                                    
-                                elif self.ssvep_mode == 'async':
-                                    ssvep_predictions = self.ssvep_model.predict(ssvep_epochs)
-
-                                self.command = str(ssvep_predictions.item())
-                                
-                                if self.mode == 'Copy':
-                                    print('[SSVEP] preds:', ssvep_predictions, ' target:', self.ssvep_y)
-                                    if ssvep_predictions == self.ssvep_y:
-                                        self.ssvep_correct += 1
-                                    self.ssvep_target.append(self.ssvep_y[-1])
-
-                                print('[SSVEP] Sending as feedback: ', self.command)                                                               
-                                self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.ssvep_feedback_port))                                
-                                self.ssvep_pred.append(self.command)
-                                 
-                                # del ssvep_signal
-                                # del ssvep_epochs        
-                                self.switch = False
-                                self.n_trials += 1
-                                print('Trial N :', self.n_trials, ' / ERP Target : ', self.erp_target)
-                                print('Trial N :', self.n_trials, ' / ERP Pred : ', self.erp_pred)
-                                print('Trial N :', self.n_trials, ' / SSVEP Target : ', self.ssvep_target)
-                                print('Trial N :', self.n_trials, ' / SSVEP Pred : ', self.ssvep_pred)
-                                print('Trial N :', self.n_trials, ' / ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100, '/  SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100 )
-                                
-                                # self.stream_signal = False                                
-                                # self.signal = np.array([])                                                                 
+                            self.SSVEP_trial(stim)                                                               
                                                     
                         # Ending Experiment 
                         if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop']:
-                            print('EXPERIMENT ENDS')
-                            print(' ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100)
-                            print(' SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)                           
-                            self.switch = False
-                            del self.signal
-                            del self.erp_x
-                            del self.erp_model
-                            del self.ssvep_x
-                            del self.ssvep_model
-                            stimSet = OVStimulationSet(0.,0.)    
-                            stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0.,0.)) 
-                            self.output[0].append(stimSet)
+                            self.experiment_end()
 
             del chunk
         return        

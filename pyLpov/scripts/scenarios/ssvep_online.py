@@ -102,6 +102,7 @@ class SSVEPpredictor(OVBox):
             
         del signal_chunk
 
+
     def filter_and_epoch(self, stim):
         '''
         '''
@@ -111,10 +112,10 @@ class SSVEPpredictor(OVBox):
         mrk = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin
                    
         ssvep_signal = processing.eeg_filter(self.signal[:, self.ssvep_begin:self.ssvep_end].T, self.fs, self.low_pass, self.high_pass, self.filter_order)                            
-        print(f"signal shape: {ssvep_signal.shape}, Markers: {mrk}")  
+        # print(f"signal shape: {ssvep_signal.shape}, Markers: {mrk}")
         ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([0, self.samples],dtype=int), mrk)
         self.ssvep_x = ssvep_epochs.squeeze()
-        print(f"ssvep_x shape: {self.ssvep_x.shape}")
+        # print(f"ssvep_x shape: {self.ssvep_x.shape}")
         del ssvep_signal
         del ssvep_epochs
         del mrk
@@ -126,7 +127,7 @@ class SSVEPpredictor(OVBox):
             sync_trials = np.where(self.ssvep_y != 1)
             # ssvep_sync_epochs = ssvep_epochs[:,:,sync_trials].squeeze()
             ssvep_sync_epochs = self.ssvep_x
-            print(f"sync epochs shape: {ssvep_sync_epochs.shape}, samples {self.samples}")
+            # print(f"sync epochs shape: {ssvep_sync_epochs.shape}, samples {self.samples}")
             ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[0:self.samples,:].transpose((1,0))) + 1                                  
             ssvep_predictions = np.array(ssvep_predictions)                      
         elif self.mode == 'async':
@@ -141,7 +142,7 @@ class SSVEPpredictor(OVBox):
             print('[SSVEP] preds:', self.command, ' target:', self.ssvep_y)
             if int(self.command) == self.ssvep_y:
                 self.ssvep_correct += 1
-                self.ssvep_target.append(self.ssvep_y[-1])
+            self.ssvep_target.append(self.ssvep_y[-1])
 
     def init_data(self):
         '''
@@ -171,9 +172,9 @@ class SSVEPpredictor(OVBox):
         del self.ssvep_model
         stimSet = OVStimulationSet(0.,0.)    
         stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0.,0.)) 
-        self.output[0].append(stimSet)       
+        self.output[0].append(stimSet)     
        
-    def process(self):        
+    def process(self):
         
         # stream signal
         if self.input[0]:            
@@ -204,13 +205,13 @@ class SSVEPpredictor(OVBox):
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']):                            
                             print('[SSVEP trial stop]', stim.date)  
 
-                            # self.filter_and_epoch(stim)
-                            # self.predict()
-                            self.command = '1'
+                            self.filter_and_epoch(stim)
+                            self.predict()
+
                             print('[SSVEP] Command to send is: ', self.command)
-                            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.feedback_port))                                                 
-                                                      
+                            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.feedback_port))                                                           
                             self.ssvep_pred.append(self.command)
+                            
                             self.print_if_target()  
                             self.init_data()
                             self.print_results()                           
@@ -224,5 +225,6 @@ class SSVEPpredictor(OVBox):
 
     def unintialize(self):
         pass
+
 
 box = SSVEPpredictor()
