@@ -5,7 +5,8 @@
 ---
 
 ### Version requirements
-Python 2.7 (a limitation from OpenVibe system which only supports version 2.7 so far. OpenVibe <=2.2.0)
+- [OpenVibe <= 3.0.0](http://openvibe.inria.fr/downloads/)
+- Python 3.8 
 
 ---
 
