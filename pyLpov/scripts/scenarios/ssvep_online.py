@@ -107,7 +107,7 @@ class SSVEPpredictor(OVBox):
         '''
         '''
         self.ssvep_stims = np.array(self.ssvep_stims)                          
-        self.ssvep_end = int(np.floor(stim.date * self.fs)) 
+        self.ssvep_end = int(np.ceil(stim.date * self.fs)) 
         self.ssvep_y = np.array(self.ssvep_y) 
         mrk = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin
                    
@@ -165,7 +165,9 @@ class SSVEPpredictor(OVBox):
         '''
         '''
         print('EXPERIMENT ENDS')
-        print(' SSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)                         
+        print(' SSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)
+        cm = confusion_matrix(np.array(self.ssvep_target), np.array(self.ssvep_pred))
+        print('Confusion matrix: ', cm)
         self.switch = False
         del self.signal
         del self.ssvep_x
@@ -203,14 +205,15 @@ class SSVEPpredictor(OVBox):
                                 self.ssvep_stims_time.append(np.floor(stim.date*self.fs))                                  
 
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']):                            
-                            print('[SSVEP trial stop]', stim.date)  
+                            print('[SSVEP trial stop]', stim.date)
+                            print('[TRIAL duration:]', stim.date - self.ssvep_stims_time[0] / 512)
 
                             self.filter_and_epoch(stim)
                             self.predict()
 
                             print('[SSVEP] Command to send is: ', self.command)
                             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.feedback_port))                                                           
-                            self.ssvep_pred.append(self.command)
+                            self.ssvep_pred.append(int(self.command))
                             
                             self.print_if_target()  
                             self.init_data()

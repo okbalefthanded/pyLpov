@@ -128,8 +128,13 @@ class ERPOnline(OVBox):
         self.erp_end = int(np.floor(stim.date * self.fs)) 
         self.erp_y = np.array(self.erp_y) 
         mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin
+        step = 1
         if self.stimulation == 'Multi':
-            mrk = mrk[::3]                          
+            # mrk = mrk[::3]
+            step = 3
+        elif self.stimulation == 'Dual':
+            step = 2
+        mrk = mrk[::step]
         erp_signal = processing.eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)                            
         erp_epochs = processing.eeg_epoch(erp_signal, np.array([0, self.erp_epochDuration],dtype=int), mrk)
         self.erp_x = erp_epochs
@@ -141,9 +146,34 @@ class ERPOnline(OVBox):
         '''
         '''
         predictions = []
+        nbr = 1
         if self.stimulation == 'Single':
             predictions = self.erp_model.predict(self.erp_x)
             self.command, idx = utils.select_target(predictions, self.erp_stims, commands)
+        elif self.stimulation == 'Dual' or self.stimulation == 'Multi':
+            events = np.array(self.erp_stims)
+            if self.stimulation == 'Dual':
+                nbr = 2
+            elif self.stimulation == 'Multi':
+                nbr = 3
+            events = events.reshape((len(events)//nbr, nbr))
+            events = np.flip(events, axis=1)
+            for model in self.erp_model:
+                predictions.append(model.predict(self.erp_x))
+            self.command, scores = utils.select_target_multistim(np.array(predictions).T, events)
+            print(scores)
+            del events
+        '''    
+        elif self.stimulation == 'Dual':
+            events = np.array(self.erp_stims)
+            events = events.reshape((len(events)//2, 2))
+            events = np.flip(events, axis=1)
+            for model in self.erp_model:
+                predictions.append(model.predict(self.erp_x))
+            self.command, scores = utils.select_target_multistim(np.array(predictions).T, events)
+            print(scores)
+            del events
+        
         elif self.stimulation == 'Multi':            
             events = np.array(self.erp_stims)
             events = events.reshape((len(events)//3, 3))
@@ -151,9 +181,11 @@ class ERPOnline(OVBox):
             for model in self.erp_model:
                 predictions.append(model.predict(self.erp_x))
             self.command, scores = utils.select_target_multistim(np.array(predictions).T, events)
-            print(scores)
-            del predictions
+            print(scores)            
             del events
+        '''
+
+        del predictions
         
     
     def initialize(self):

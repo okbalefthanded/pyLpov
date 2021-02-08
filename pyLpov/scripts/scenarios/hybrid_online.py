@@ -81,7 +81,7 @@ class HybridOnline(OVBox):
     def initialize(self):
         self.fs = int(self.setting["Sample Rate"])
         #
-        self.erp_stimuation = str(self.setting['ERP Stimulation'])
+        self.erp_stimulation = str(self.setting['ERP Stimulation'])
         self.erp_lowPass = int(self.setting["ERP Low Pass"])
         self.erp_highPass = int(self.setting["ERP High Pass"])
         self.erp_filterOrder = int(self.setting["ERP Filter Order"])
@@ -89,8 +89,8 @@ class HybridOnline(OVBox):
         self.erp_epochDuration = np.ceil(float(self.setting["ERP Epoch Duration (in sec)"]) * self.fs).astype(int)
         self.erp_movingAverage = int(self.setting["ERP Moving Average"])
         self.erp_model_path = self.setting["ERP Classifier"]
-        # self.erp_model = pickle.load(open(self.erp_model_path, 'rb'),  encoding='latin1') # py3
-        self.erp_model = pickle.load(open(self.erp_model_path, 'rb')) #py2
+        self.erp_model = pickle.load(open(self.erp_model_path, 'rb'),  encoding='latin1') # py3
+        # self.erp_model = pickle.load(open(self.erp_model_path, 'rb')) #py2
         #
         self.ssvep_lowPass = int(self.setting["SSVEP Low Pass"])
         self.ssvep_highPass = int(self.setting["SSVEP High Pass"])
@@ -140,8 +140,15 @@ class HybridOnline(OVBox):
             samples = self.erp_epochDuration                        
             self.erp_y = np.array(self.erp_y)
             mrk = np.array(self.erp_stims_time).astype(int) - self.erp_begin
+            step = 1
             if self.erp_stimulation == 'Multi':
-                    mrk = mrk[::3] 
+                # mrk = mrk[::3]
+                step = 3
+            elif self.erp_stimulation == 'Dual':
+                step = 2
+            #if self.erp_stimulation == 'Multi':
+            #        mrk = mrk[::3]
+            mrk = mrk[::step] 
             low_pass = self.erp_lowPass
             high_pass = self.erp_highPass
             order = self.erp_filterOrder
@@ -167,20 +174,26 @@ class HybridOnline(OVBox):
         '''
         '''
         self.erp_stims = np.array(self.erp_stims) 
-        predictions = []
+        predictions = []            
+        nbr = 1
         if self.erp_stimulation == 'Single':
             predictions = self.erp_model.predict(self.erp_x)
             self.command, idx = utils.select_target(predictions, self.erp_stims, commands)
-        elif self.erp_stimulation == 'Multi':            
+        elif self.erp_stimulation == 'Dual' or self.stimulation == 'Multi':
             events = self.erp_stims
-            events = events.reshape((len(events)//3, 3))
+            if self.stimulation == 'Dual':
+                nbr = 2
+            elif self.stimulation == 'Multi':
+                nbr = 3
+            events = events.reshape((len(events)//nbr, nbr))
             events = np.flip(events, axis=1)
             for model in self.erp_model:
                 predictions.append(model.predict(self.erp_x))
             self.command, scores = utils.select_target_multistim(np.array(predictions).T, events)
             print(scores)
-            del predictions
             del events
+        
+        del predictions
 
     def print_if_target(self, paradigm):
         '''
