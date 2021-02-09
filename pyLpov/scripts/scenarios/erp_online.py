@@ -161,6 +161,8 @@ class ERPOnline(OVBox):
             for model in self.erp_model:
                 predictions.append(model.predict(self.erp_x))
             self.command, scores = utils.select_target_multistim(np.array(predictions).T, events)
+            if self.command == '0':
+                self.command = '5' # there is no 0 command it's a padding with command 5
             print(scores)
             del events
         '''    
