@@ -6,7 +6,7 @@ import scipy.signal as sig
 import numpy as np
 # utils
 # import pickle
-import os
+import  os
 
 # Filter
 def eeg_filter(eeg, fs, low_pass, high_pass, order):
@@ -14,8 +14,9 @@ def eeg_filter(eeg, fs, low_pass, high_pass, order):
     B,A = sig.butter(order, np.array([low_pass,high_pass],dtype=float)/(fs/2), btype='bandpass')
     return sig.filtfilt(B, A, eeg, axis=0)
     # return sig.filtfilt(B, A, eeg, axis=0, padtype='odd', padlen=3*(max(len(B),len(A))-1))
-
+'''
 # Epoch
+
 def eeg_epoch(eeg, epoch_length, markers):
     channels = int(eeg.shape[1])
     epoch_length = np.around(epoch_length)
@@ -25,6 +26,22 @@ def eeg_epoch(eeg, epoch_length, markers):
     # eeg_epochs = np.array(eeg[epoch_idx,:]).reshape((samples, len(markers), channels), order='F').transpose((0,2,1))
     eeg_epochs = np.array(eeg[epoch_idx,:]).reshape((samples, len(markers), channels), order='F').transpose((0,2,1))
     return eeg_epochs
+'''
+
+def eeg_epoch(eeg, epoch_length, markers, fs):
+    start = np.around(0.2*fs).astype(int)
+    epoch_length = [-0.2*fs, epoch_length[1]]
+    channels = int(eeg.shape[1])
+    epoch_length = np.around(epoch_length).astype(int)
+    dur = np.arange(epoch_length[0], epoch_length[1]).reshape((epoch_length[1]-epoch_length[0],1)) * np.ones( (1, len(markers)),dtype=int)
+    samples = len(dur)
+    epoch_idx = dur + markers
+    eeg_epochs = np.array(eeg[epoch_idx,:]).reshape((samples, len(markers), channels), order='F').transpose((0,2,1))
+    baseline = eeg_epochs.mean(axis=0)
+    eeg_epochs = eeg_epochs - baseline
+    eeg_epochs = eeg_epochs[start:,:,:]
+    return eeg_epochs
+
 
 # Feature extraction, downsample + moving average
 def eeg_feature(eeg, downsample, moving_average):

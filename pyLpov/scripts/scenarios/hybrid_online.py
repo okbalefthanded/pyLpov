@@ -163,7 +163,7 @@ class HybridOnline(OVBox):
                          
         end = int(np.floor(stim.date * self.fs))                           
         signal = processing.eeg_filter(self.signal[:, begin:end].T, self.fs, low_pass, high_pass, order)                            
-        epochs = processing.eeg_epoch(signal, np.array([0, samples],dtype=int), mrk)
+        epochs = processing.eeg_epoch(signal, np.array([0, samples],dtype=int), mrk, self.fs)
         
         del signal        
         del mrk

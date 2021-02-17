@@ -35,7 +35,6 @@ class CBHYBRID(object):
         anls.run_analysis(dataset)
         self.analysis.append(anls)
 
-
     def save(self):
         for anls in self.analysis:
             anls.save()

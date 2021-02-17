@@ -136,7 +136,7 @@ class ERPOnline(OVBox):
             step = 2
         mrk = mrk[::step]
         erp_signal = processing.eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)                            
-        erp_epochs = processing.eeg_epoch(erp_signal, np.array([0, self.erp_epochDuration],dtype=int), mrk)
+        erp_epochs = processing.eeg_epoch(erp_signal, np.array([0, self.erp_epochDuration],dtype=int), mrk, self.fs)
         self.erp_x = erp_epochs
         del erp_signal
         del erp_epochs
@@ -162,31 +162,10 @@ class ERPOnline(OVBox):
                 predictions.append(model.predict(self.erp_x))
             self.command, scores = utils.select_target_multistim(np.array(predictions).T, events)
             if self.command == '0':
-                self.command = '5' # there is no 0 command it's a padding with command 5
+                self.command = '#' # there is no 0 command it's a padding with command 5
             print(scores)
             del events
-        '''    
-        elif self.stimulation == 'Dual':
-            events = np.array(self.erp_stims)
-            events = events.reshape((len(events)//2, 2))
-            events = np.flip(events, axis=1)
-            for model in self.erp_model:
-                predictions.append(model.predict(self.erp_x))
-            self.command, scores = utils.select_target_multistim(np.array(predictions).T, events)
-            print(scores)
-            del events
-        
-        elif self.stimulation == 'Multi':            
-            events = np.array(self.erp_stims)
-            events = events.reshape((len(events)//3, 3))
-            events = np.flip(events, axis=1)
-            for model in self.erp_model:
-                predictions.append(model.predict(self.erp_x))
-            self.command, scores = utils.select_target_multistim(np.array(predictions).T, events)
-            print(scores)            
-            del events
-        '''
-
+            
         del predictions
         
     

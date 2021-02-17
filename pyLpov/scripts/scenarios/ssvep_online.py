@@ -113,7 +113,7 @@ class SSVEPpredictor(OVBox):
                    
         ssvep_signal = processing.eeg_filter(self.signal[:, self.ssvep_begin:self.ssvep_end].T, self.fs, self.low_pass, self.high_pass, self.filter_order)                            
         # print(f"signal shape: {ssvep_signal.shape}, Markers: {mrk}")
-        ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([0, self.samples],dtype=int), mrk)
+        ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([0, self.samples],dtype=int), mrk, self.fs)
         self.ssvep_x = ssvep_epochs.squeeze()
         # print(f"ssvep_x shape: {self.ssvep_x.shape}")
         del ssvep_signal

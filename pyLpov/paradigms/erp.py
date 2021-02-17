@@ -7,7 +7,8 @@ from pyLpov.paradigms.base import Paradigm
 
 FLASHING_MODE = {0: 'SC', 1:'RC'}
 SPELLER_TYPE  = {0:'FLASHING_SPELLER', 1:'FACES_SPELLER', 2:'INVERTED_FACE',
-                 3:'COLORED_FACE',4:'INVERTED_COLORED_FACE',5:'SSVEP'} # stimulation type
+                 3:'COLORED_FACE', 4:'INVERTED_COLORED_FACE', 5:'SSVEP',
+                 6: 'ARABIC_SPELLER', 7: 'MULTI_STIM', 8 : 'DUAL_STIM'} # stimulation type
 
 
 class ERP(Paradigm):
