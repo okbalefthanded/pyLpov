@@ -53,6 +53,7 @@ class SSVEPpredictor(OVBox):
         self.trials_count = 0
         # self.frequencies = ['idle', 14, 12, 10, 8]
         self.frequencies = [14,12, 10, 8]
+        
         self.num_harmonics = 0
         self.epoch_duration = 0
         self.fs = 512

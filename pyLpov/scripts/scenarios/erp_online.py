@@ -135,8 +135,11 @@ class ERPOnline(OVBox):
         elif self.stimulation == 'Dual':
             step = 2
         mrk = mrk[::step]
-        erp_signal = processing.eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)                            
-        erp_epochs = processing.eeg_epoch(erp_signal, np.array([0, self.erp_epochDuration],dtype=int), mrk, self.fs)
+        erp_signal = processing.eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)
+        strt = int(0.1*self.fs)
+        # np.array([strt, self.erp_epochDuration],dtype=int)
+        ep = np.ceil(np.array([0.1,0.5])*self.fs).astype(int) # FIXME
+        erp_epochs = processing.eeg_epoch(erp_signal,ep , mrk, self.fs)
         self.erp_x = erp_epochs
         del erp_signal
         del erp_epochs
@@ -220,6 +223,7 @@ class ERPOnline(OVBox):
                             self.predict(commands)
 
                             print('[ERP] Command to send is: ', self.command)
+                            
                             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                                                 
                                                       
                             self.erp_pred.append(self.command)

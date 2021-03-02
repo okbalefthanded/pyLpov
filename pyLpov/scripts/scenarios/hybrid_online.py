@@ -4,6 +4,7 @@ from pyLpov.proc import processing
 from pyLpov.utils import utils
 from pyLpov.machine_learning.cca import CCA 
 import numpy as np
+import random
 import socket
 import logging
 import pickle
@@ -25,6 +26,7 @@ class HybridOnline(OVBox):
         self.signal =np.array([])
         self.tmp_list = []
         self.n_trials = 0
+        self.tr_dur = []
         #
         self.erp_stims = []
         self.erp_stims_time = []
@@ -55,7 +57,7 @@ class HybridOnline(OVBox):
         self.ssvep_highPass = 50
         self.ssvep_filterOrder = 6   
         self.ssvep_n_harmonics = 2
-        self.ssvep_frequencies = ['idle', 14, 12, 10, 8]
+        self.ssvep_frequencies = ['idle', 8.57,6.67,12,5.54]
         self.ssvep_epochDuration = 4.0
         self.ssvep_samples = 0
         self.ssvep_references = []   
@@ -152,6 +154,7 @@ class HybridOnline(OVBox):
             low_pass = self.erp_lowPass
             high_pass = self.erp_highPass
             order = self.erp_filterOrder
+            ep_dur = np.ceil(np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
 
         elif paradigm == 'SSVEP':
             begin = self.ssvep_begin                                                                                                                       
@@ -160,10 +163,17 @@ class HybridOnline(OVBox):
             low_pass = self.ssvep_lowPass
             high_pass = self.ssvep_highPass
             order = self.ssvep_filterOrder
+            ep_dur = np.ceil(np.array([0, samples])).astype(int)
+            # print("SSVEP ep dur ", ep_dur, samples)
                          
         end = int(np.floor(stim.date * self.fs))                           
-        signal = processing.eeg_filter(self.signal[:, begin:end].T, self.fs, low_pass, high_pass, order)                            
-        epochs = processing.eeg_epoch(signal, np.array([0, samples],dtype=int), mrk, self.fs)
+        signal = processing.eeg_filter(self.signal[:, begin:end].T, self.fs, low_pass, high_pass, order)         
+        
+        # ep = np.ceil(np.array([0.1,0.5])*self.fs).astype(int) # FIXME
+        # erp_epochs = processing.eeg_epoch(erp_signal,ep , mrk, self.fs)
+        
+        # epochs = processing.eeg_epoch(signal, np.array([0, samples],dtype=int), mrk, self.fs)
+        epochs = processing.eeg_epoch(signal, ep_dur, mrk, self.fs)
         
         del signal        
         del mrk
@@ -258,6 +268,8 @@ class HybridOnline(OVBox):
         del self.erp_model
         del self.ssvep_x
         del self.ssvep_model
+        jitter = np.diff(self.tr_dur)-5.7
+        print('Trial durations delay: ',  jitter, jitter.mean())
         stimSet = OVStimulationSet(0.,0.)    
         stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0.,0.)) 
         self.output[0].append(stimSet)
@@ -267,6 +279,7 @@ class HybridOnline(OVBox):
         '''
         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch):                       
             print('[ERP trial start]', stim.date)
+            self.tr_dur.append(stim.date)
             self.ssvep_y = []
             self.ssvep_stims_time = []                          
             if(len(self.erp_stims_time) == 0):
@@ -287,9 +300,10 @@ class HybridOnline(OVBox):
 
             self.erp_x = self.filter_and_epoch('ERP', stim)
             self.erp_predict()
-                            
-            print('[ERP] Command to send is: ', self.command)
-                           
+            # self.command = '1'
+            self.command = random.choice(commands)                
+            print('[ERP] Command to send is: ', self.command)            
+            
             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))
             self.erp_pred.append(self.command)                       
                             
@@ -319,11 +333,15 @@ class HybridOnline(OVBox):
             self.ssvep_stims_time.append(np.floor(stim.date*self.fs)) 
 
         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and self.ssvep_y):        
-            print('[SSVEP trial stop]', stim.date)                                                              
+            print('[SSVEP trial stop]', stim.date)    
+
+            # print('[TRIAL duration:]', stim.date - self.ssvep_stims_time[0] / 512)
             self.ssvep_x = self.filter_and_epoch('SSVEP', stim)
             self.ssvep_predict()
 
-            print('[SSVEP] Sending as feedback: ', self.command)                                                               
+            print('[SSVEP] Sending as feedback: ', self.command)
+            speed = ['1', '2', '3', '4']
+            self.command = random.choice(speed)
             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.ssvep_feedback_port))                                
             self.ssvep_pred.append(self.command)
 

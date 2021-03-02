@@ -24,6 +24,7 @@ class SSVEPpredictor(OVBox):
         self.model = None
         self.model_path = None
         self.frequencies = ['idle', 14, 12, 10, 8]
+        # self.frequencies = ['idle', 8.57, 6.67, 12, 5.45]
         # self.frequencies = [14, 12, 10, 8]
         #
         self.ssvep_stims = []
@@ -62,7 +63,8 @@ class SSVEPpredictor(OVBox):
         #
         self.experiment_mode = self.setting["Experiment Mode"]
         self.fs = int(self.setting['Sample Rate'])
-        self.epoch_duration = np.ceil(float(self.setting['Epoch Duration (in sec)']))
+        # self.epoch_duration = np.floor(float(self.setting['Epoch Duration (in sec)']))
+        self.epoch_duration = float(self.setting['Epoch Duration (in sec)'])
         self.low_pass = int(self.setting["Low Pass"])
         self.high_pass = int(self.setting["High Pass"])
         self.filter_order = int(self.setting["Filter Order"])
