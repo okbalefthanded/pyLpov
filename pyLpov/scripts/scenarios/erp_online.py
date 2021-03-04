@@ -5,6 +5,8 @@ import numpy as np
 import socket
 import logging
 import pickle
+import datetime
+import random
 import os
 import gc
 
@@ -24,6 +26,7 @@ class ERPOnline(OVBox):
         self.signal =np.array([])
         self.tmp_list = []
         self.n_trials = 0
+        self.tr_dur = []
         #
         self.erp_stims = []
         self.erp_stims_time = []
@@ -66,6 +69,8 @@ class ERPOnline(OVBox):
         del self.signal
         del self.erp_x
         del self.erp_model
+        jitter = np.diff(self.tr_dur)
+        print('Trial durations delay: ',  jitter, jitter.mean())
         stimSet = OVStimulationSet(0.,0.)    
         stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0.,0.)) 
         self.output[0].append(stimSet)
@@ -123,6 +128,7 @@ class ERPOnline(OVBox):
     def filter_and_epoch(self, stim):
         '''
         '''
+        # print('[current Time:]', datetime.datetime.now())
         self.erp_stims_time = self.tmp_list 
         self.erp_stims = np.array(self.erp_stims)                          
         self.erp_end = int(np.floor(stim.date * self.fs)) 
@@ -202,7 +208,7 @@ class ERPOnline(OVBox):
                         # ERP session                        
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):                       
                             print('[ERP trial start]', stim.date)
-
+                            self.tr_dur.append(stim.date)
                             if(len(self.erp_stims_time) == 0):
                                 self.erp_begin = int(np.floor(stim.date * self.fs))                                
                         
@@ -221,7 +227,7 @@ class ERPOnline(OVBox):
 
                             self.filter_and_epoch(stim)
                             self.predict(commands)
-
+                            self.command = random.choice(commands)
                             print('[ERP] Command to send is: ', self.command)
                             
                             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                                                 

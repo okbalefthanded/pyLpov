@@ -4,9 +4,10 @@ from pyLpov.proc import processing
 from pyLpov.machine_learning.cca import CCA 
 import numpy as np
 import pandas as pd
+import logging
 import pickle
 import socket
-import logging
+import random
 import os
 
 np.set_printoptions(precision=4)
@@ -23,9 +24,10 @@ class SSVEPpredictor(OVBox):
         self.n_trials = 0
         self.model = None
         self.model_path = None
-        self.frequencies = ['idle', 14, 12, 10, 8]
-        # self.frequencies = ['idle', 8.57, 6.67, 12, 5.45]
+        # self.frequencies = ['idle', 14, 12, 10, 8]
+        self.frequencies = ['idle', 8.57, 6.67, 12, 5.45]
         # self.frequencies = [14, 12, 10, 8]
+        self.tr_dur = []
         #
         self.ssvep_stims = []
         self.ssvep_stims_time = []
@@ -82,7 +84,8 @@ class SSVEPpredictor(OVBox):
             self.references = np.array(x).reshape(len(frequencies), 2*self.harmonics, self.samples)
             self.ssvep_model = CCA(self.harmonics, frequencies, self.references, int(self.epoch_duration))
         elif self.mode == 'async':
-            self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb'),  encoding='latin1') #py3
+            self.ssvep_model = pickle.load(open(self.model_path, 'rb'),  encoding='latin1') #py3
+            # self.ssvep_model = None
             # self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb')) #py2
             # generate reference by itcca method
             self.references = self.ssvep_model
@@ -108,11 +111,12 @@ class SSVEPpredictor(OVBox):
     def filter_and_epoch(self, stim):
         '''
         '''
+        # print('[current Time:]', datetime.datetime.now())
         self.ssvep_stims = np.array(self.ssvep_stims)                          
         self.ssvep_end = int(np.ceil(stim.date * self.fs)) 
         self.ssvep_y = np.array(self.ssvep_y) 
         mrk = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin
-                   
+                
         ssvep_signal = processing.eeg_filter(self.signal[:, self.ssvep_begin:self.ssvep_end].T, self.fs, self.low_pass, self.high_pass, self.filter_order)                            
         # print(f"signal shape: {ssvep_signal.shape}, Markers: {mrk}")
         ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([0, self.samples],dtype=int), mrk, self.fs)
@@ -121,6 +125,7 @@ class SSVEPpredictor(OVBox):
         del ssvep_signal
         del ssvep_epochs
         del mrk
+        
 
     def predict(self):
         '''
@@ -133,7 +138,7 @@ class SSVEPpredictor(OVBox):
             ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[0:self.samples,:].transpose((1,0))) + 1                                  
             ssvep_predictions = np.array(ssvep_predictions)                      
         elif self.mode == 'async':
-            ssvep_predictions = self.ssvep_model.predict(self.ssvep_x)
+            ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[... , None]) + 1
 
         self.command = str(ssvep_predictions.item())
 
@@ -174,8 +179,10 @@ class SSVEPpredictor(OVBox):
         del self.signal
         del self.ssvep_x
         del self.ssvep_model
+        # jitter = np.diff(self.tr_dur)
+        # print('Trial durations delay: ',  jitter, jitter.min(), jitter.max(), jitter.mean())
         stimSet = OVStimulationSet(0.,0.)    
-        stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0.,0.)) 
+        stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0., 0.)) 
         self.output[0].append(stimSet)     
        
     def process(self):
@@ -195,7 +202,8 @@ class SSVEPpredictor(OVBox):
                         # SSVEP session                        
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):                       
                             print('[SSVEP trial start]', stim.date)
-                            if(len(self.ssvep_stims_time) == 0):                                
+                            if(len(self.ssvep_stims_time) == 0):
+                                self.tr_dur.append(stim.date)
                                 self.ssvep_begin = int(np.floor(stim.date * self.fs))
 
                         if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_VisualSteadyStateStimulationStart']):
@@ -212,6 +220,8 @@ class SSVEPpredictor(OVBox):
 
                             self.filter_and_epoch(stim)
                             self.predict()
+                            # commands = ['1', '2', '3', '4', '5']
+                            # self.command = random.choice(commands)
 
                             print('[SSVEP] Command to send is: ', self.command)
                             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.feedback_port))                                                           

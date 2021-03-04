@@ -268,7 +268,7 @@ class HybridOnline(OVBox):
         del self.erp_model
         del self.ssvep_x
         del self.ssvep_model
-        jitter = np.diff(self.tr_dur)-5.7
+        jitter = np.diff(self.tr_dur)
         print('Trial durations delay: ',  jitter, jitter.mean())
         stimSet = OVStimulationSet(0.,0.)    
         stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0.,0.)) 
