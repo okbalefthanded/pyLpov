@@ -1,7 +1,10 @@
 from __future__ import print_function, division
 from sklearn.metrics import confusion_matrix
 from pyLpov.proc import processing
-from pyLpov.machine_learning.cca import CCA 
+from pyLpov.machine_learning.cca import CCA
+from pyLpov.io.models import load_model 
+# from pyLpov.utils.utils import is_keras_model
+# from tensorflow.keras.models import load_model
 import numpy as np
 import pandas as pd
 import logging
@@ -24,6 +27,7 @@ class SSVEPpredictor(OVBox):
         self.n_trials = 0
         self.model = None
         self.model_path = None
+        self.keras_model = False
         # self.frequencies = ['idle', 14, 12, 10, 8]
         self.frequencies = ['idle', 8.57, 6.67, 12, 5.45]
         # self.frequencies = [14, 12, 10, 8]
@@ -84,7 +88,16 @@ class SSVEPpredictor(OVBox):
             self.references = np.array(x).reshape(len(frequencies), 2*self.harmonics, self.samples)
             self.ssvep_model = CCA(self.harmonics, frequencies, self.references, int(self.epoch_duration))
         elif self.mode == 'async':
-            self.ssvep_model = pickle.load(open(self.model_path, 'rb'),  encoding='latin1') #py3
+            self.ssvep_model, self.keras_model = load_model(self.model_path)
+            '''
+            if is_keras_model(self.model_path):
+                # Keras model
+                self.ssvep_model = load_model(self.model_path)
+                self.keras_model = True
+            else:
+                # sklearn model
+                self.ssvep_model = pickle.load(open(self.model_path, 'rb'),  encoding='latin1') #py3
+            '''
             # self.ssvep_model = None
             # self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb')) #py2
             # generate reference by itcca method
@@ -126,7 +139,7 @@ class SSVEPpredictor(OVBox):
         del ssvep_epochs
         del mrk
         
-
+    
     def predict(self):
         '''
         '''
@@ -138,7 +151,10 @@ class SSVEPpredictor(OVBox):
             ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[0:self.samples,:].transpose((1,0))) + 1                                  
             ssvep_predictions = np.array(ssvep_predictions)                      
         elif self.mode == 'async':
-            ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[... , None]) + 1
+            if self.keras_model:
+                ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0))).argmax() + 1
+            else:
+                ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None]) + 1
 
         self.command = str(ssvep_predictions.item())
 
@@ -179,8 +195,8 @@ class SSVEPpredictor(OVBox):
         del self.signal
         del self.ssvep_x
         del self.ssvep_model
-        # jitter = np.diff(self.tr_dur)
-        # print('Trial durations delay: ',  jitter, jitter.min(), jitter.max(), jitter.mean())
+        jitter = np.diff(self.tr_dur)
+        print('Trial durations delay: ',  jitter, jitter.min(), jitter.max(), jitter.mean())
         stimSet = OVStimulationSet(0.,0.)    
         stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0., 0.)) 
         self.output[0].append(stimSet)     

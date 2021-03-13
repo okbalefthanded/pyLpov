@@ -3,6 +3,7 @@ from sklearn.metrics import confusion_matrix
 from pyLpov.proc import processing
 from pyLpov.utils import utils
 from pyLpov.machine_learning.cca import CCA 
+from pyLpov.io.models import load_model
 import numpy as np
 import random
 import socket
@@ -36,6 +37,7 @@ class HybridOnline(OVBox):
         self.erp_highPass = 10
         self.erp_filterOrder = 2
         self.erp_model = None
+        self.erp_keras_model = False
         self.erp_downSample = 4
         self.erp_movingAverage = 12
         self.erp_epochDuration = 0.7
@@ -53,6 +55,7 @@ class HybridOnline(OVBox):
         self.ssvep_stims_time = []
         self.ssvep_model = None
         self.ssvep_model_path = []
+        self.ssvep_keras_model = False
         self.ssvep_lowPass = 5
         self.ssvep_highPass = 50
         self.ssvep_filterOrder = 6   
@@ -91,8 +94,9 @@ class HybridOnline(OVBox):
         self.erp_epochDuration = np.ceil(float(self.setting["ERP Epoch Duration (in sec)"]) * self.fs).astype(int)
         self.erp_movingAverage = int(self.setting["ERP Moving Average"])
         self.erp_model_path = self.setting["ERP Classifier"]
-        self.erp_model = pickle.load(open(self.erp_model_path, 'rb'),  encoding='latin1') # py3
+        # self.erp_model = pickle.load(open(self.erp_model_path, 'rb'),  encoding='latin1') # py3
         # self.erp_model = pickle.load(open(self.erp_model_path, 'rb')) #py2
+        self.erp_model, self.erp_keras_model = load_model(self.erp_model_path)
         #
         self.ssvep_lowPass = int(self.setting["SSVEP Low Pass"])
         self.ssvep_highPass = int(self.setting["SSVEP High Pass"])
@@ -111,7 +115,8 @@ class HybridOnline(OVBox):
             self.ssvep_references = np.array(x).reshape(len(frequencies), 2*self.ssvep_n_harmonics, self.ssvep_samples)
             self.ssvep_model = CCA(self.ssvep_n_harmonics, frequencies, self.ssvep_references, int(self.ssvep_epochDuration))
         elif self.ssvep_mode == 'async':
-            self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb'),  encoding='latin1') #py3
+            self.ssvep_model, self.ssvep_keras_model = load_model(self.ssvep_model_path)
+            # self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb'),  encoding='latin1') #py3
             # self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb')) #py2
             # generate reference by itcca method
             self.ssvep_references = self.ssvep_model
@@ -187,7 +192,11 @@ class HybridOnline(OVBox):
         predictions = []            
         nbr = 1
         if self.erp_stimulation == 'Single':
-            predictions = self.erp_model.predict(self.erp_x)
+            if self.erp_keras_model:
+                predictions = self.erp_model.predict(self.erp_x.transpose((2,1,0)))
+                predictions[predictions > .5] = 1.
+            else:
+                predictions = self.erp_model.predict(self.erp_x)
             self.command, idx = utils.select_target(predictions, self.erp_stims, commands)
         elif self.erp_stimulation == 'Dual' or self.stimulation == 'Multi':
             events = self.erp_stims
@@ -243,7 +252,12 @@ class HybridOnline(OVBox):
                                 
         elif self.ssvep_mode == 'async':
             # ssvep_predictions = self.ssvep_model.predict(ssvep_epochs)
-            ssvep_predictions = self.ssvep_model.predict(self.ssvep_x)
+            
+            if self.ssvep_keras_model:
+                ssvep_predictions = self.ssvep_model.predict(self.ssvep_x.transpose((2, 1, 0))).argmax() + 1
+            else:
+                ssvep_predictions = self.ssvep_model.predict(self.ssvep_x)
+                # ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None]) + 1 #TRCA
 
         self.command = str(ssvep_predictions.item())
 
@@ -269,7 +283,7 @@ class HybridOnline(OVBox):
         del self.ssvep_x
         del self.ssvep_model
         jitter = np.diff(self.tr_dur)
-        print('Trial durations delay: ',  jitter, jitter.mean())
+        print('Trial durations delay: ',  jitter, jitter.min(), jitter.max(), jitter.mean())
         stimSet = OVStimulationSet(0.,0.)    
         stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0.,0.)) 
         self.output[0].append(stimSet)

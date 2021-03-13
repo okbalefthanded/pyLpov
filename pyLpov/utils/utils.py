@@ -3,6 +3,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import GridSearchCV
 import os
 import yaml
+import h5py
 import numpy as np
 
 # calculate score for each stimulus and select the target
@@ -112,4 +113,17 @@ def create_components_from_config(config):
 
 def make_pipeline_from_components(components):
     pipeline = make_pipeline(*components)
-    return pipeline    
+    return pipeline
+    
+def is_keras_model(filepath):
+    """Test whether a classifier is Keras model saved in h5 format
+
+    Parameters
+    ----------
+    filepath : str
+        classifier filepath
+    """
+    if h5py.is_hdf5(filepath):
+        return True
+    else:
+        return False

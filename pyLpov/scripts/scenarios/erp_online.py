@@ -1,6 +1,8 @@
 from sklearn.metrics import confusion_matrix
 from pyLpov.proc import processing
 from pyLpov.utils import utils
+# from tensorflow.keras.models import load_model
+from pyLpov.io.models import load_model
 import numpy as np
 import socket
 import logging
@@ -44,6 +46,7 @@ class ERPOnline(OVBox):
         self.erp_begin = 0
         self.erp_end = 0
         self.erp_model_path = []
+        self.keras_model = False
         self.erp_correct = 0
         self.erp_target = []
         self.erp_pred = []
@@ -70,7 +73,7 @@ class ERPOnline(OVBox):
         del self.erp_x
         del self.erp_model
         jitter = np.diff(self.tr_dur)
-        print('Trial durations delay: ',  jitter, jitter.mean())
+        print('Trial durations delay: ',  jitter, jitter.min(), jitter.max(), jitter.mean())
         stimSet = OVStimulationSet(0.,0.)    
         stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0.,0.)) 
         self.output[0].append(stimSet)
@@ -144,7 +147,7 @@ class ERPOnline(OVBox):
         erp_signal = processing.eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)
         strt = int(0.1*self.fs)
         # np.array([strt, self.erp_epochDuration],dtype=int)
-        ep = np.ceil(np.array([0.1,0.5])*self.fs).astype(int) # FIXME
+        ep = np.ceil(np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
         erp_epochs = processing.eeg_epoch(erp_signal,ep , mrk, self.fs)
         self.erp_x = erp_epochs
         del erp_signal
@@ -157,7 +160,12 @@ class ERPOnline(OVBox):
         predictions = []
         nbr = 1
         if self.stimulation == 'Single':
-            predictions = self.erp_model.predict(self.erp_x)
+            if self.keras_model:                
+                predictions = self.erp_model.predict(self.erp_x.transpose((2,1,0)))
+                predictions[predictions > .5] = 1.
+            else:
+                # print("[ERP epoch shape] ", self.erp_x.shape)
+                predictions = self.erp_model.predict(self.erp_x)
             self.command, idx = utils.select_target(predictions, self.erp_stims, commands)
         elif self.stimulation == 'Dual' or self.stimulation == 'Multi':
             events = np.array(self.erp_stims)
@@ -188,7 +196,16 @@ class ERPOnline(OVBox):
         self.erp_epochDuration = np.ceil(float(self.setting["ERP Epoch Duration (in sec)"]) * self.fs).astype(int)
         self.erp_movingAverage = int(self.setting["ERP Moving Average"])
         self.erp_model_path = self.setting["Classifier"]
-        self.erp_model = pickle.load(open(self.erp_model_path, 'rb'))
+        self.erp_model, self.keras_model = load_model(self.erp_model_path)
+        '''
+        if utils.is_keras_model(self.erp_model_path):
+            # Keras model
+            self.erp_model = load_model(self.erp_model_path)
+            self.keras_model = True
+        else:
+            # sklearn model
+            self.erp_model = pickle.load(open(self.erp_model_path, 'rb'))
+        '''
         self.stimulation = str(self.setting["Stimulation"])
 
     def process(self):        

@@ -40,7 +40,7 @@ def eeg_epoch(eeg, epoch_length, markers, fs):
     eeg_epochs = np.array(eeg[epoch_idx,:]).reshape((samples, len(markers), channels), order='F').transpose((0,2,1))
     baseline = eeg_epochs.mean(axis=0)
     eeg_epochs = eeg_epochs - baseline
-    eeg_epochs = eeg_epochs[start+ep:,:,:]
+    eeg_epochs = eeg_epochs[start+ep:, :, :]
     return eeg_epochs
 
 
