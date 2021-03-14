@@ -2,7 +2,7 @@ from __future__ import print_function, division
 from sklearn.metrics import confusion_matrix
 from pyLpov.proc import processing
 from pyLpov.machine_learning.cca import CCA
-from pyLpov.io.models import load_model 
+from pyLpov.io.models import load_model, predict_openvino_model
 # from pyLpov.utils.utils import is_keras_model
 # from tensorflow.keras.models import load_model
 import numpy as np
@@ -12,6 +12,7 @@ import pickle
 import socket
 import random
 import os
+
 
 np.set_printoptions(precision=4)
 OVTK_StimulationLabel_Base = 0x00008100
@@ -28,8 +29,9 @@ class SSVEPpredictor(OVBox):
         self.model = None
         self.model_path = None
         self.keras_model = False
-        # self.frequencies = ['idle', 14, 12, 10, 8]
-        self.frequencies = ['idle', 8.57, 6.67, 12, 5.45]
+        self.model_file_type = ''
+        self.frequencies = ['idle', 14, 12, 10, 8]
+        # self.frequencies = ['idle', 8.57, 6.67, 12, 5.45]
         # self.frequencies = [14, 12, 10, 8]
         self.tr_dur = []
         #
@@ -88,7 +90,7 @@ class SSVEPpredictor(OVBox):
             self.references = np.array(x).reshape(len(frequencies), 2*self.harmonics, self.samples)
             self.ssvep_model = CCA(self.harmonics, frequencies, self.references, int(self.epoch_duration))
         elif self.mode == 'async':
-            self.ssvep_model, self.keras_model = load_model(self.model_path)
+            self.ssvep_model, self.keras_model, self.model_file_type = load_model(self.model_path)
             '''
             if is_keras_model(self.model_path):
                 # Keras model
@@ -151,8 +153,12 @@ class SSVEPpredictor(OVBox):
             ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[0:self.samples,:].transpose((1,0))) + 1                                  
             ssvep_predictions = np.array(ssvep_predictions)                      
         elif self.mode == 'async':
-            if self.keras_model:
-                ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0))).argmax() + 1
+            if self.keras_model or self.model_file_type == 'xml':
+                if self.model_file_type == 'h5':
+                    ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0))).argmax() + 1
+                elif self.model_file_type == 'xml':
+                    ssvep_predictions = predict_openvino_model(self.ssvep_model, self.ssvep_x[..., None].transpose((2, 1, 0)))
+                    ssvep_predictions = ssvep_predictions.argmax() + 1
             else:
                 ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None]) + 1
 

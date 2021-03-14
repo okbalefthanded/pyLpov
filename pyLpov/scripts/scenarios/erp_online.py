@@ -2,7 +2,7 @@ from sklearn.metrics import confusion_matrix
 from pyLpov.proc import processing
 from pyLpov.utils import utils
 # from tensorflow.keras.models import load_model
-from pyLpov.io.models import load_model
+from pyLpov.io.models import load_model, predict_openvino_model
 import numpy as np
 import socket
 import logging
@@ -47,6 +47,7 @@ class ERPOnline(OVBox):
         self.erp_end = 0
         self.erp_model_path = []
         self.keras_model = False
+        self.model_file_type = ''
         self.erp_correct = 0
         self.erp_target = []
         self.erp_pred = []
@@ -160,8 +161,11 @@ class ERPOnline(OVBox):
         predictions = []
         nbr = 1
         if self.stimulation == 'Single':
-            if self.keras_model:                
-                predictions = self.erp_model.predict(self.erp_x.transpose((2,1,0)))
+            if self.keras_model or self.model_file_type == 'xml': 
+                if self.model_file_type == 'h5':               
+                    predictions = self.erp_model.predict(self.erp_x.transpose((2,1,0)))
+                elif self.model_file_type == 'xml':
+                    predictions = predict_openvino_model(self.erp_model, self.erp_x.transpose((2,1,0)))
                 predictions[predictions > .5] = 1.
             else:
                 # print("[ERP epoch shape] ", self.erp_x.shape)
@@ -196,7 +200,7 @@ class ERPOnline(OVBox):
         self.erp_epochDuration = np.ceil(float(self.setting["ERP Epoch Duration (in sec)"]) * self.fs).astype(int)
         self.erp_movingAverage = int(self.setting["ERP Moving Average"])
         self.erp_model_path = self.setting["Classifier"]
-        self.erp_model, self.keras_model = load_model(self.erp_model_path)
+        self.erp_model, self.keras_model, self.model_file_type = load_model(self.erp_model_path)
         '''
         if utils.is_keras_model(self.erp_model_path):
             # Keras model
