@@ -136,7 +136,7 @@ def freeze_model(model, frozen_folder, debug=False):
         if True print name of layers in the model, by default False
     """
     frozen_graph_filename = f"{model.name}_Frozen"
-
+    pb_file_name = f"{frozen_graph_filename}.pb"
     # Convert Keras model to ConcreteFunction
     full_model = tf.function(lambda x: model(x))
     full_model = full_model.get_concrete_function(tf.TensorSpec(model.inputs[0].shape, model.inputs[0].dtype))
@@ -161,7 +161,7 @@ def freeze_model(model, frozen_folder, debug=False):
     # Save frozen graph to disk
     tf.io.write_graph(graph_or_graph_def=frozen_func.graph,
                       logdir=frozen_folder,
-                      name=f"{frozen_graph_filename}.pb",
+                      name=pb_file_name,
                       as_text=False)
 
     # Save its text representation
@@ -169,6 +169,7 @@ def freeze_model(model, frozen_folder, debug=False):
                       logdir=frozen_folder,
                       name=f"{frozen_graph_filename}.pbtxt",
                       as_text=True)
+    return pb_file_name
 
 def model_optimizer(pb_file, output_dir, input_shape):
     """Generate OpenVINO optimized model by calling model optimizer script
@@ -182,9 +183,9 @@ def model_optimizer(pb_file, output_dir, input_shape):
     input_shape : list of int
         model input shape eg.: [batch, channels, samples]  
     """
-    mo_tf_path = '"C:\Program Files (x86)\Intel\openvino_2021\deployment_tools\model_optimizer\mo_tf.py"'
+    # mo_tf_path = '"C:\Program Files (x86)\Intel\openvino_2021\deployment_tools\model_optimizer\mo_tf.py"'
+    mo_tf_path = "C:\Program Files (x86)\Intel\openvino_2021\deployment_tools\model_optimizer\mo_tf.py"
     input_shape_str = str(input_shape).replace(' ','')
-
     #!python {mo_tf_path} --input_model {pb_file} --output_dir {output_dir} --input_shape {input_shape_str} --data_type FP32 --disable_nhwc_to_nchw
     cmd = subprocess.run(["python", mo_tf_path, "--input_model", pb_file, 
                          "--output_dir", output_dir, "--input_shape", input_shape_str,
