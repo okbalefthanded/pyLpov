@@ -52,7 +52,6 @@ class DataSet(object):
         cnt = raw[chs].to_numpy()
         raw_desc = DataSet.get_events(raw, 'Event Id')
         raw_pos = DataSet.get_events(raw, 'Event Date') 
-
         start_interv = raw_pos[raw_desc==OpenViBE_stimulation['OVTK_StimulationId_ExperimentStart']]
         end_interv =  raw_pos[raw_desc==OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop']]
 
@@ -101,7 +100,8 @@ class DataSet(object):
         events_id = dataframe[key].notna()
         events = dataframe[key].loc[events_id]
         events = events.to_numpy()
-        ev = [elm.split(':') for elm in events]
+        # ev = [elm.split(':') for elm in events]
+        ev = [str(elm).split(':') for elm in events]
         ev = np.array(list(pd.core.common.flatten(ev)), dtype=float)
         return ev   
         

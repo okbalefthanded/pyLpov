@@ -20,8 +20,8 @@ class Calibration(object):
             self.paradigm = paradigm            
         else:
             self.paradigm = self.parse_paradigm(self.experiment)
-        self.model = None
-        self.fitted = False                
+        self.model = model
+        self.fitted = fitted                
     
     @staticmethod
     def parse_paradigm(exp):

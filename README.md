@@ -12,6 +12,7 @@
 
 ## Installation
 
+### Option 1 : build from source
 First, clone repo from github:
 
 ```
@@ -27,16 +28,30 @@ pip install -r requirements.txt
 python setup.py install
 ```
 ---
+### Option 2 : using pip 
+```
+pip install git+https://github.com/okbalefthanded/pyLpov.git
+```
+---
+### CPU Inference Acceleration
+In online processing with Deep Neural Networks, Keras/TensorFlow models are supported. When only CPU (Intel CPUs) is used for inference it is recommanded to install and use Intel's OpenVINO toolkit. 
 
+[OpenVINO installation guide](https://docs.openvinotoolkit.org/latest/openvino_docs_install_guides_installing_openvino_windows.html)
+
+---
 ## Usage
 
 ### Offline processing
+#### - Feature engineering pipeline 
 The API is built in a way that provides automatic processing through the use of [YAML](https://wiki.python.org/moin/YAML) configuration files and [Scikit-learn](https://scikit-learn.org/stable/) classes : [Pipeline](https://scikit-learn.org/stable/modules/compose.html#pipeline)  and [Estimators](https://scikit-learn.org/stable/modules/generated/sklearn.base.BaseEstimator.html?highlight=estimator#sklearn.base.BaseEstimator) (inspired from the API of [MOABB](https://github.com/NeuroTechX/moabb))
 
 A configuration file specifies the pipline chain of operations from preprocessing to feature extractors to classifiers.
 
 #### Using CLI
-see ```cmd_tuto.bat``` on how to set and execute the offline analysis, and follow ```sa_hybrid_train.py``` in pyLpov/scripts/standalone on how to set an automatice processing script. 
+see ```cmd_tuto.bat``` on how to set and execute the offline analysis, and follow ```sa_hybrid_train.py``` in pyLpov/scripts/standalone on how to set an automatice processing script.
+
+#### - End-To-End Deep Neural Networks
+Trained Keras models saved in H5 format are supported.
 
 ### Online processing 
 - Make sure the python scripting box is available in the OpenVibe Designer Scripting tab.
