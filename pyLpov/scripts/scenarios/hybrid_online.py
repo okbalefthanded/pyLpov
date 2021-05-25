@@ -3,7 +3,8 @@ from sklearn.metrics import confusion_matrix
 from pyLpov.proc import processing
 from pyLpov.utils import utils
 from pyLpov.machine_learning.cca import CCA 
-from pyLpov.io.models import load_model, predict_openvino_model
+# from pyLpov.io.models import load_model, predict_openvino_model
+from pyLpov.io.models import load_model
 import numpy as np
 import random
 import socket
@@ -198,8 +199,10 @@ class HybridOnline(OVBox):
             if self.erp_keras_model or self.erp_model_file_type == 'xml':
                 if self.erp_model_file_type == 'h5':
                     predictions = self.erp_model.predict(self.erp_x.transpose((2,1,0)))
+                '''
                 elif self.erp_model_file_type == 'xml':
                     predictions = predict_openvino_model(self.erp_model, self.erp_x.transpose((2,1,0)))
+                '''
                 predictions[predictions > .5] = 1.
             else:
                 predictions = self.erp_model.predict(self.erp_x)
@@ -261,9 +264,11 @@ class HybridOnline(OVBox):
             if self.ssvep_keras_model or self.ssvep_model_file_type == 'xml':
                 if self.ssvep_model_file_type == 'h5':
                     ssvep_predictions = self.ssvep_model.predict(self.ssvep_x.transpose((2, 1, 0))).argmax() + 1
+                '''
                 elif self.ssvep_model_file_type == 'xml':
                     ssvep_predictions = predict_openvino_model(self.ssvep_model, self.ssvep_x.transpose((2, 1, 0)))
                     ssvep_predictions = ssvep_predictions.argmax() + 1
+                '''
             else:
                 ssvep_predictions = self.ssvep_model.predict(self.ssvep_x)
                 # ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None]) + 1 #TRCA

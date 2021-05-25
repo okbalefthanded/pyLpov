@@ -2,7 +2,8 @@ from __future__ import print_function, division
 from sklearn.metrics import confusion_matrix
 from pyLpov.proc import processing
 from pyLpov.machine_learning.cca import CCA
-from pyLpov.io.models import load_model, predict_openvino_model
+# from pyLpov.io.models import load_model, predict_openvino_model
+from pyLpov.io.models import load_model
 # from pyLpov.utils.utils import is_keras_model
 # from tensorflow.keras.models import load_model
 import numpy as np
@@ -156,9 +157,11 @@ class SSVEPpredictor(OVBox):
             if self.keras_model or self.model_file_type == 'xml':
                 if self.model_file_type == 'h5':
                     ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0))).argmax() + 1
+                '''
                 elif self.model_file_type == 'xml':
                     ssvep_predictions = predict_openvino_model(self.ssvep_model, self.ssvep_x[..., None].transpose((2, 1, 0)))
                     ssvep_predictions = ssvep_predictions.argmax() + 1
+                '''
             else:
                 ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None]) + 1
 

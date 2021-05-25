@@ -1,6 +1,6 @@
 from tensorflow.python.framework.convert_to_constants import convert_variables_to_constants_v2
 from tensorflow.keras.models import load_model as K_load_model
-from openvino.inference_engine import IECore
+# from openvino.inference_engine import IECore
 from tensorflow import keras
 import tensorflow as tf
 import numpy as np
@@ -41,15 +41,17 @@ def load_model(filepath):
         if file_type == 'h5':
             # regular Keras model
             model = K_load_model(filepath)
+        '''
         elif file_type == 'xml':
             # optimized OpenVINO model
             model = load_openvino_model(filepath)
+        '''
     else:  
         file_type = ''      
         model = pickle.load(open(filepath, 'rb'),  encoding='latin1') #py3
     return model, deep_model, file_type
 
-
+'''
 def load_openvino_model(filepath):
     """load openvino optimized model as inference engine network
 
@@ -111,6 +113,7 @@ def predict_openvino_model(net, epoch):
     prediction_openvino_blob = request.output_blobs[output_name]
     prediction_openvino = prediction_openvino_blob.buffer
     return prediction_openvino
+'''
 
 def model_type(filepath):
     """Determine model's type (as file's extension) from filepath 
@@ -122,7 +125,7 @@ def model_type(filepath):
     """
     return filepath.split('/')[-1].split('.')[-1]
 
-
+'''
 def freeze_model(model, frozen_folder, debug=False):
     """Convert Keras model to a TensorFlow frozen graph
 
@@ -191,3 +194,4 @@ def model_optimizer(pb_file, output_dir, input_shape):
                          "--output_dir", output_dir, "--input_shape", input_shape_str,
                          "--data_type", "FP32", "--disable_nhwc_to_nchw"])
     print(f"The exit code was: {cmd.returncode}")
+'''

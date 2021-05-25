@@ -2,7 +2,8 @@ from sklearn.metrics import confusion_matrix
 from pyLpov.proc import processing
 from pyLpov.utils import utils
 # from tensorflow.keras.models import load_model
-from pyLpov.io.models import load_model, predict_openvino_model
+# from pyLpov.io.models import load_model, predict_openvino_model
+from pyLpov.io.models import load_model
 import numpy as np
 import socket
 import logging
@@ -164,8 +165,10 @@ class ERPOnline(OVBox):
             if self.keras_model or self.model_file_type == 'xml': 
                 if self.model_file_type == 'h5':               
                     predictions = self.erp_model.predict(self.erp_x.transpose((2,1,0)))
+                '''
                 elif self.model_file_type == 'xml':
                     predictions = predict_openvino_model(self.erp_model, self.erp_x.transpose((2,1,0)))
+                '''
                 predictions[predictions > .5] = 1.
             else:
                 # print("[ERP epoch shape] ", self.erp_x.shape)
