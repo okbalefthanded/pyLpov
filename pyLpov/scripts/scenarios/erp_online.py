@@ -149,7 +149,8 @@ class ERPOnline(OVBox):
         erp_signal = processing.eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)
         strt = int(0.1*self.fs)
         # np.array([strt, self.erp_epochDuration],dtype=int)
-        ep = np.ceil(np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
+        # ep = np.ceil(np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
+        ep = (np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
         erp_epochs = processing.eeg_epoch(erp_signal,ep , mrk, self.fs)
         self.erp_x = erp_epochs
         del erp_signal
@@ -161,6 +162,7 @@ class ERPOnline(OVBox):
         '''
         predictions = []
         nbr = 1
+        print('shape :', self.erp_x.shape)
         if self.stimulation == 'Single':
             if self.keras_model or self.model_file_type == 'xml': 
                 if self.model_file_type == 'h5':               
@@ -251,7 +253,7 @@ class ERPOnline(OVBox):
 
                             self.filter_and_epoch(stim)
                             self.predict(commands)
-                            self.command = random.choice(commands)
+                            # self.command = random.choice(commands)
                             print('[ERP] Command to send is: ', self.command)
                             
                             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                                                 

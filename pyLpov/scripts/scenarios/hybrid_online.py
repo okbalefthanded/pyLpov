@@ -163,7 +163,8 @@ class HybridOnline(OVBox):
             low_pass = self.erp_lowPass
             high_pass = self.erp_highPass
             order = self.erp_filterOrder
-            ep_dur = np.ceil(np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
+            # ep_dur = np.ceil(np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
+            ep_dur = (np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
 
         elif paradigm == 'SSVEP':
             begin = self.ssvep_begin                                                                                                                       
