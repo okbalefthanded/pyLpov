@@ -149,6 +149,7 @@ class ERPOnline(OVBox):
         strt = int(0.1*self.fs)
         # np.array([strt, self.erp_epochDuration],dtype=int)
         ep = np.ceil(np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
+        ep = (np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
         erp_epochs = processing.eeg_epoch(erp_signal,ep , mrk, self.fs)
         self.erp_x = erp_epochs
         del erp_signal
@@ -165,8 +166,11 @@ class ERPOnline(OVBox):
                 if self.model_file_type == 'h5':               
                     predictions = self.erp_model.predict(self.erp_x.transpose((2,1,0)))
                 elif self.model_file_type == 'xml':
-                    predictions = predict_openvino_model(self.erp_model, self.erp_x.transpose((2,1,0)))
-                predictions[predictions > .5] = 1.
+                    # predictions = predict_openvino_model(self.erp_model, self.erp_x.transpose((2,1,0)))
+                    for i in range(self.erp_x.shape[-1]):
+                        epoch = self.erp_x.transpose((2,1,0))[i][None,...]
+                        predictions.append(predict_openvino_model(self.erp_model, epoch).item())
+                # predictions[predictions > .5] = 1.
             else:
                 # print("[ERP epoch shape] ", self.erp_x.shape)
                 predictions = self.erp_model.predict(self.erp_x)

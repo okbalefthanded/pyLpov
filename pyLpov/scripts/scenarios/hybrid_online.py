@@ -63,7 +63,8 @@ class HybridOnline(OVBox):
         self.ssvep_filterOrder = 6   
         self.ssvep_n_harmonics = 2
         # self.ssvep_frequencies = ['idle', 8.57,6.67,12,5.54]
-        self.ssvep_frequencies = ['idle', 8.57,6.67,12,5.54]
+        # self.ssvep_frequencies = ['idle', 8.57,6.67,12,5.54]
+        self.ssvep_frequencies = ['idle', 11, 10, 9, 8]
         self.ssvep_epochDuration = 4.0
         self.ssvep_samples = 0
         self.ssvep_references = []   
@@ -104,11 +105,19 @@ class HybridOnline(OVBox):
         self.ssvep_lowPass = int(self.setting["SSVEP Low Pass"])
         self.ssvep_highPass = int(self.setting["SSVEP High Pass"])
         self.ssvep_filterOrder = int(self.setting["SSVEP Filter Order"])
-        self.ssvep_epochDuration = float(self.setting[  "SSVEP Epoch Duration (in sec)"]) 
+        # self.ssvep_epochDuration = float(self.setting[  "SSVEP Epoch Duration (in sec)"]) 
+        self.ssvep_epochDuration = np.array(self.setting["SSVEP Epoch Duration (in sec)"].split(','), dtype=np.float)
         self.ssvep_n_harmonics = int(self.setting["SSVEP Harmonics"])
-        self.ssvep_samples = int(self.ssvep_epochDuration * self.fs)
+        # self.ssvep_samples = int(self.ssvep_epochDuration * self.fs)
+        if len(self.ssvep_epochDuration) >  1:
+            dur = np.diff(self.ssvep_epochDuration)
+            self.ssvep_samples = int(dur * self.fs)            
+        else:
+            dur = self.ssvep_epochDuration
+            self.ssvep_samples = int(self.ssvep_epochDuration * self.fs)
         self.ssvep_mode = self.setting["SSVEP Mode"]
         self.ssvep_model_path = self.setting['SSVEP Classifier']
+        
         t = np.arange(0.0, float(self.ssvep_samples)) / self.fs
         if self.ssvep_mode == 'sync':
             frequencies = self.ssvep_frequencies[1:]
@@ -116,7 +125,8 @@ class HybridOnline(OVBox):
             # generate reference signals
             x = [ [np.cos(2*np.pi*f*t*i),np.sin(2*np.pi*f*t*i)] for f in frequencies for i in range(1, self.ssvep_n_harmonics+1)]
             self.ssvep_references = np.array(x).reshape(len(frequencies), 2*self.ssvep_n_harmonics, self.ssvep_samples)
-            self.ssvep_model = CCA(self.ssvep_n_harmonics, frequencies, self.ssvep_references, int(self.ssvep_epochDuration))
+            # self.ssvep_model = CCA(self.ssvep_n_harmonics, frequencies, self.ssvep_references, int(self.ssvep_epochDuration))
+            self.ssvep_model = CCA(self.ssvep_n_harmonics, frequencies, self.ssvep_references, int(dur))
         elif self.ssvep_mode == 'async':
             self.ssvep_model, self.ssvep_keras_model, self.ssvep_model_file_type = load_model(self.ssvep_model_path)
             # self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb'),  encoding='latin1') #py3
@@ -162,7 +172,7 @@ class HybridOnline(OVBox):
             low_pass = self.erp_lowPass
             high_pass = self.erp_highPass
             order = self.erp_filterOrder
-            ep_dur = np.ceil(np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
+            ep_dur = (np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
 
         elif paradigm == 'SSVEP':
             begin = self.ssvep_begin                                                                                                                       
@@ -171,7 +181,11 @@ class HybridOnline(OVBox):
             low_pass = self.ssvep_lowPass
             high_pass = self.ssvep_highPass
             order = self.ssvep_filterOrder
-            ep_dur = np.ceil(np.array([0, samples])).astype(int)
+            if len(self.ssvep_epochDuration) > 1:
+                ep_dur = (self.ssvep_epochDuration * self.fs).astype(int)
+            else:
+                ep_dur = np.array([0, self.ssvep_epochDuration[0]*self.fs], dtype=int)
+            # ep_dur = np.ceil(np.array([0, samples])).astype(int)
             # print("SSVEP ep dur ", ep_dur, samples)
                          
         end = int(np.floor(stim.date * self.fs))                           
@@ -199,8 +213,11 @@ class HybridOnline(OVBox):
                 if self.erp_model_file_type == 'h5':
                     predictions = self.erp_model.predict(self.erp_x.transpose((2,1,0)))
                 elif self.erp_model_file_type == 'xml':
-                    predictions = predict_openvino_model(self.erp_model, self.erp_x.transpose((2,1,0)))
-                predictions[predictions > .5] = 1.
+                    # predictions = predict_openvino_model(self.erp_model, self.erp_x.transpose((2,1,0)))
+                    for i in range(self.erp_x.shape[-1]):
+                        epoch = self.erp_x.transpose((2,1,0))[i][None,...]
+                        predictions.append(predict_openvino_model(self.erp_model, epoch).item())
+                # predictions[predictions > .5] = 1.
             else:
                 predictions = self.erp_model.predict(self.erp_x)
             self.command, idx = utils.select_target(predictions, self.erp_stims, commands)

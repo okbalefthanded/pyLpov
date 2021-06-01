@@ -30,7 +30,7 @@ class SSVEPpredictor(OVBox):
         self.model_path = None
         self.keras_model = False
         self.model_file_type = ''
-        self.frequencies = ['idle', 14, 12, 10, 8]
+        self.frequencies = ['idle', 11, 10, 9, 8]
         # self.frequencies = ['idle', 8.57, 6.67, 12, 5.45]
         # self.frequencies = [14, 12, 10, 8]
         self.tr_dur = []
@@ -72,15 +72,20 @@ class SSVEPpredictor(OVBox):
         self.experiment_mode = self.setting["Experiment Mode"]
         self.fs = int(self.setting['Sample Rate'])
         # self.epoch_duration = np.floor(float(self.setting['Epoch Duration (in sec)']))
-        self.epoch_duration = float(self.setting['Epoch Duration (in sec)'])
+        # self.epoch_duration = float(self.setting['Epoch Duration (in sec)'])
+        self.epoch_duration = np.array(self.setting['Epoch Duration (in sec)'].split(','), dtype=np.float)
         self.low_pass = int(self.setting["Low Pass"])
         self.high_pass = int(self.setting["High Pass"])
         self.filter_order = int(self.setting["Filter Order"])
         self.harmonics = int(self.setting['Harmonics'])
         self.mode = self.setting["Mode"]
         self.model_path = self.setting["Classifier"]
-        
-        self.samples = int(self.epoch_duration * self.fs)
+        if len(self.epoch_duration) >  1:
+            dur = np.diff(self.epoch_duration)
+            self.samples = int(dur * self.fs)            
+        else:
+            dur = self.epoch_duration
+            self.samples = int(self.epoch_duration * self.fs)
         t = np.arange(0.0, float(self.samples)) / self.fs
         if self.mode == 'sync':
             frequencies = self.frequencies[1:]
@@ -88,7 +93,9 @@ class SSVEPpredictor(OVBox):
             # generate reference signals
             x = [ [np.cos(2*np.pi*f*t*i),np.sin(2*np.pi*f*t*i)] for f in frequencies for i in range(1, self.harmonics+1)]
             self.references = np.array(x).reshape(len(frequencies), 2*self.harmonics, self.samples)
-            self.ssvep_model = CCA(self.harmonics, frequencies, self.references, int(self.epoch_duration))
+            # self.ssvep_model = CCA(self.harmonics, frequencies, self.references, int(self.epoch_duration))
+            self.ssvep_model = CCA(self.harmonics, frequencies, self.references, int(dur))
+            
         elif self.mode == 'async':
             self.ssvep_model, self.keras_model, self.model_file_type = load_model(self.model_path)
             '''
@@ -134,9 +141,16 @@ class SSVEPpredictor(OVBox):
                 
         ssvep_signal = processing.eeg_filter(self.signal[:, self.ssvep_begin:self.ssvep_end].T, self.fs, self.low_pass, self.high_pass, self.filter_order)                            
         # print(f"signal shape: {ssvep_signal.shape}, Markers: {mrk}")
-        ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([0, self.samples],dtype=int), mrk, self.fs)
+        if len(self.epoch_duration) > 1:
+            dur = (self.epoch_duration * self.fs).astype(int)
+        else:
+            dur = np.array([0, self.epoch_duration[0]*self.fs], dtype=int)
+        ssvep_epochs = processing.eeg_epoch(ssvep_signal, dur, mrk, self.fs) 
+        # ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([0, self.samples],dtype=int), mrk, self.fs)
+        # ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([int(0.1*self.fs), self.samples],dtype=int), mrk, self.fs)
         self.ssvep_x = ssvep_epochs.squeeze()
         # print(f"ssvep_x shape: {self.ssvep_x.shape}")
+        
         del ssvep_signal
         del ssvep_epochs
         del mrk
@@ -150,7 +164,8 @@ class SSVEPpredictor(OVBox):
             # ssvep_sync_epochs = ssvep_epochs[:,:,sync_trials].squeeze()
             ssvep_sync_epochs = self.ssvep_x
             # print(f"sync epochs shape: {ssvep_sync_epochs.shape}, samples {self.samples}")
-            ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[0:self.samples,:].transpose((1,0))) + 1                                  
+            ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[0:self.samples,:].transpose((1,0))) + 1
+            # ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[51:self.samples,:].transpose((1,0))) + 1                                  
             ssvep_predictions = np.array(ssvep_predictions)                      
         elif self.mode == 'async':
             if self.keras_model or self.model_file_type == 'xml':
