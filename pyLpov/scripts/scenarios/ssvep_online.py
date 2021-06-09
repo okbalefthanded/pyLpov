@@ -1,7 +1,9 @@
 from __future__ import print_function, division
 from sklearn.metrics import confusion_matrix
-from pyLpov.proc import processing
-from pyLpov.machine_learning.cca import CCA
+# from pyLpov.proc import processing
+from pyLpov.proc.processing import eeg_filter, eeg_epoch
+# from pyLpov.machine_learning.cca import CCA
+from baseline.ssvep.cca import CCA
 from pyLpov.io.models import load_model, predict_openvino_model
 # from pyLpov.utils.utils import is_keras_model
 # from tensorflow.keras.models import load_model
@@ -65,7 +67,8 @@ class SSVEPpredictor(OVBox):
         self.feedback_port = 12345   
         self.do_feedback = False 
         self.trial_ended = False
-
+        # 
+        self.dur  = 0
 
     def initialize(self):
         #
@@ -82,10 +85,13 @@ class SSVEPpredictor(OVBox):
         self.model_path = self.setting["Classifier"]
         if len(self.epoch_duration) >  1:
             dur = np.diff(self.epoch_duration)
-            self.samples = int(dur * self.fs)            
+            self.samples = int(dur * self.fs)    
+            self.dur = (self.epoch_duration * self.fs).astype(int)        
         else:
             dur = self.epoch_duration
             self.samples = int(self.epoch_duration * self.fs)
+            self.dur = np.array([0, self.epoch_duration[0]*self.fs], dtype=int)
+
         t = np.arange(0.0, float(self.samples)) / self.fs
         if self.mode == 'sync':
             frequencies = self.frequencies[1:]
@@ -94,7 +100,7 @@ class SSVEPpredictor(OVBox):
             x = [ [np.cos(2*np.pi*f*t*i),np.sin(2*np.pi*f*t*i)] for f in frequencies for i in range(1, self.harmonics+1)]
             self.references = np.array(x).reshape(len(frequencies), 2*self.harmonics, self.samples)
             # self.ssvep_model = CCA(self.harmonics, frequencies, self.references, int(self.epoch_duration))
-            self.ssvep_model = CCA(self.harmonics, frequencies, self.references, int(dur))
+            self.ssvep_model = CCA(self.harmonics, frequencies, phase=None, references=self.references, length=int(dur))
             
         elif self.mode == 'async':
             self.ssvep_model, self.keras_model, self.model_file_type = load_model(self.model_path)
@@ -135,17 +141,26 @@ class SSVEPpredictor(OVBox):
         '''
         # print('[current Time:]', datetime.datetime.now())
         self.ssvep_stims = np.array(self.ssvep_stims)                          
-        self.ssvep_end = int(np.ceil(stim.date * self.fs)) 
+        # self.ssvep_end = int(np.ceil(stim.date * self.fs))
+        self.ssvep_end = np.ceil(stim.date * self.fs).astype(int) 
         self.ssvep_y = np.array(self.ssvep_y) 
         mrk = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin
                 
-        ssvep_signal = processing.eeg_filter(self.signal[:, self.ssvep_begin:self.ssvep_end].T, self.fs, self.low_pass, self.high_pass, self.filter_order)                            
+        # ssvep_signal = processing.eeg_filter(self.signal[:, self.ssvep_begin:self.ssvep_end].T, self.fs, self.low_pass, self.high_pass, self.filter_order)                            
+        ssvep_signal = eeg_filter(self.signal[:, self.ssvep_begin:self.ssvep_end].T, self.fs, self.low_pass, self.high_pass, self.filter_order)                            
+
         # print(f"signal shape: {ssvep_signal.shape}, Markers: {mrk}")
+        
+        '''
         if len(self.epoch_duration) > 1:
             dur = (self.epoch_duration * self.fs).astype(int)
         else:
             dur = np.array([0, self.epoch_duration[0]*self.fs], dtype=int)
-        ssvep_epochs = processing.eeg_epoch(ssvep_signal, dur, mrk, self.fs) 
+        '''
+
+        # print(f"dur : {dur}")
+        # ssvep_epochs = processing.eeg_epoch(ssvep_signal, dur, mrk, self.fs)
+        ssvep_epochs = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs) 
         # ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([0, self.samples],dtype=int), mrk, self.fs)
         # ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([int(0.1*self.fs), self.samples],dtype=int), mrk, self.fs)
         self.ssvep_x = ssvep_epochs.squeeze()
@@ -153,20 +168,19 @@ class SSVEPpredictor(OVBox):
         
         del ssvep_signal
         del ssvep_epochs
-        del mrk
-        
+        del mrk        
     
     def predict(self):
         '''
         '''
         if self.mode == 'sync':                
-            sync_trials = np.where(self.ssvep_y != 1)
+            # sync_trials = np.where(self.ssvep_y != 1)
             # ssvep_sync_epochs = ssvep_epochs[:,:,sync_trials].squeeze()
-            ssvep_sync_epochs = self.ssvep_x
+            # ssvep_sync_epochs = self.ssvep_x
             # print(f"sync epochs shape: {ssvep_sync_epochs.shape}, samples {self.samples}")
-            ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[0:self.samples,:].transpose((1,0))) + 1
+            ssvep_predictions = np.array(self.ssvep_model.predict(self.ssvep_x[0:self.samples, :].transpose((1,0))) + 1)
             # ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[51:self.samples,:].transpose((1,0))) + 1                                  
-            ssvep_predictions = np.array(ssvep_predictions)                      
+            # ssvep_predictions = np.array(ssvep_predictions)                      
         elif self.mode == 'async':
             if self.keras_model or self.model_file_type == 'xml':
                 if self.model_file_type == 'h5':
@@ -209,9 +223,10 @@ class SSVEPpredictor(OVBox):
         '''
         '''
         print('EXPERIMENT ENDS')
-        print(' SSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)
-        cm = confusion_matrix(np.array(self.ssvep_target), np.array(self.ssvep_pred))
-        print('Confusion matrix: ', cm)
+        if self.experiment_mode == 'Copy':
+            print(' SSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)
+            cm = confusion_matrix(np.array(self.ssvep_target), np.array(self.ssvep_pred))
+            print('Confusion matrix: ', cm)
         self.switch = False
         del self.signal
         del self.ssvep_x
@@ -253,13 +268,13 @@ class SSVEPpredictor(OVBox):
 
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']):                            
                             print('[SSVEP trial stop]', stim.date)
-                            print('[TRIAL duration:]', stim.date - self.ssvep_stims_time[0] / 512)
+                            print('[TRIAL duration:]', stim.date - self.ssvep_stims_time[0] / self.fs)
 
                             self.filter_and_epoch(stim)
                             self.predict()
-                            # commands = ['1', '2', '3', '4', '5']
+                            # commands = ['1', '2', '3', '4']
                             # self.command = random.choice(commands)
-
+                            
                             print('[SSVEP] Command to send is: ', self.command)
                             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.feedback_port))                                                           
                             self.ssvep_pred.append(int(self.command))

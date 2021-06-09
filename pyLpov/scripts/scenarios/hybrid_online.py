@@ -240,11 +240,10 @@ class HybridOnline(OVBox):
     def print_if_target(self, paradigm):
         '''
         '''
-        if paradigm ==  'ERP':            
-            self.erp_y[self.erp_y == 1] = -1
-            self.erp_y[self.erp_y == 0] = 1
-        
+        if paradigm ==  'ERP':                    
             if self.mode == 'Copy':
+                self.erp_y[self.erp_y == 1] = -1
+                self.erp_y[self.erp_y == 0] = 1
                 tg = np.where(self.erp_y == 1)                               
                 print('[ERP Target] : ', self.erp_stims[tg[0][0]] )
                 self.erp_target.append(self.erp_stims[tg[0][0]]) 
@@ -290,18 +289,21 @@ class HybridOnline(OVBox):
     def print_results(self):
         '''
         '''
-        print('Trial N :', self.n_trials, ' / ERP Target : ', self.erp_target)
-        print('Trial N :', self.n_trials, ' / ERP Pred : ', self.erp_pred)
-        print('Trial N :', self.n_trials, ' / SSVEP Target : ', self.ssvep_target)
-        print('Trial N :', self.n_trials, ' / SSVEP Pred : ', self.ssvep_pred)
-        print('Trial N :', self.n_trials, ' / ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100, '/  SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100 )                              
+        print('Trial N :', self.n_trials)
+        if self.mode == 'Copy':
+            print('Trial N :', self.n_trials, ' / ERP Target : ', self.erp_target)
+            print('Trial N :', self.n_trials, ' / ERP Pred : ', self.erp_pred)
+            print('Trial N :', self.n_trials, ' / SSVEP Target : ', self.ssvep_target)
+            print('Trial N :', self.n_trials, ' / SSVEP Pred : ', self.ssvep_pred)
+            print('Trial N :', self.n_trials, ' / ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100, '/  SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100 )                              
 
     def experiment_end(self):
         '''
         '''
         print('EXPERIMENT ENDS')
-        print(' ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100)
-        print(' SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)                           
+        if self.mode == 'Copy':
+            print(' ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100)
+            print(' SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)                           
         self.switch = False
         del self.signal
         del self.erp_x
@@ -341,7 +343,7 @@ class HybridOnline(OVBox):
             self.erp_x = self.filter_and_epoch('ERP', stim)
             self.erp_predict()
             # self.command = '1'
-            self.command = random.choice(commands)                
+            # self.command = random.choice(commands)                
             print('[ERP] Command to send is: ', self.command)            
             
             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))
@@ -381,7 +383,7 @@ class HybridOnline(OVBox):
 
             print('[SSVEP] Sending as feedback: ', self.command)
             speed = ['1', '2', '3', '4']
-            self.command = random.choice(speed)
+            # self.command = random.choice(speed)
             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.ssvep_feedback_port))                                
             self.ssvep_pred.append(self.command)
 

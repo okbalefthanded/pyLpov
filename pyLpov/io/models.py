@@ -4,9 +4,11 @@ from openvino.inference_engine import IECore
 from tensorflow import keras
 import tensorflow as tf
 import numpy as np
-import h5py
-import pickle
 import subprocess
+import pickle
+import h5py
+import os
+
 
 
 def is_keras_model(filepath):
@@ -35,10 +37,14 @@ def load_model(filepath):
         - Keras H5 saved model object OR
         - Openvino Inference Engine network object
     """
-    file_type = model_type(filepath)
-    deep_model = is_keras_model(filepath)
+    if os.path.isdir(filepath):
+        file_type = 'tf'
+        deep_model = True
+    else:
+        file_type = model_type(filepath)
+        deep_model = is_keras_model(filepath)
     if deep_model or file_type== 'xml':        
-        if file_type == 'h5':
+        if file_type == 'h5' or file_type == 'tf':
             # regular Keras model
             model = K_load_model(filepath)
         elif file_type == 'xml':
@@ -188,6 +194,27 @@ def model_optimizer(pb_file, output_dir, input_shape):
     input_shape_str = str(input_shape).replace(' ','')
     #!python {mo_tf_path} --input_model {pb_file} --output_dir {output_dir} --input_shape {input_shape_str} --data_type FP32 --disable_nhwc_to_nchw
     cmd = subprocess.run(["python", mo_tf_path, "--input_model", pb_file, 
+                         "--output_dir", output_dir, "--input_shape", input_shape_str,
+                         "--data_type", "FP32", "--disable_nhwc_to_nchw"])
+    print(f"The exit code was: {cmd.returncode}")
+
+def model_optimizer_savedmodel(model_dir, output_dir, input_shape):
+    """Generate OpenVINO optimized model by calling model optimizer script
+
+    Parameters
+    ----------
+    model_dir : str
+        tf SavedModel dir
+    output_dir : str
+        folder where the optimized model will be stored
+    input_shape : list of int
+        model input shape eg.: [batch, channels, samples]  
+    """
+    # mo_tf_path = '"C:\Program Files (x86)\Intel\openvino_2021\deployment_tools\model_optimizer\mo_tf.py"'
+    mo_tf_path = "C:\Program Files (x86)\Intel\openvino_2021\deployment_tools\model_optimizer\mo_tf.py"
+    input_shape_str = str(input_shape).replace(' ','')
+    #!python {mo_tf_path} --saved_model_dir {model_dir} --output_dir {output_dir} --input_shape {input_shape_str} --data_type FP32 --disable_nhwc_to_nchw
+    cmd = subprocess.run(["python", mo_tf_path, "--saved_model_dir", model_dir, 
                          "--output_dir", output_dir, "--input_shape", input_shape_str,
                          "--data_type", "FP32", "--disable_nhwc_to_nchw"])
     print(f"The exit code was: {cmd.returncode}")

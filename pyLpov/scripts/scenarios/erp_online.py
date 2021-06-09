@@ -68,7 +68,8 @@ class ERPOnline(OVBox):
         '''
         '''
         print('EXPERIMENT ENDS')
-        print(' ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100)                         
+        if self.mode == 'Copy':
+            print(' ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100)                         
         self.switch = False
         del self.signal
         del self.erp_x
@@ -81,18 +82,19 @@ class ERPOnline(OVBox):
     
     def print_results(self):
         '''
-        '''        
-        print('Trial N :', self.n_trials, ' / ERP Target : ', self.erp_target)
-        print('Trial N :', self.n_trials, ' / ERP Pred : ', self.erp_pred)
-        print('Trial N :', self.n_trials, ' / ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100)
+        '''
+        if self.mode == 'Copy':        
+            print('Trial N :', self.n_trials, ' / ERP Target : ', self.erp_target)
+            print('Trial N :', self.n_trials, ' / ERP Pred : ', self.erp_pred)
+            print('Trial N :', self.n_trials, ' / ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100)
     
     def print_if_target(self):
         '''
         '''
-        self.erp_y[self.erp_y == 1] = -1
-        self.erp_y[self.erp_y == 0] = 1
-        
+               
         if self.mode == 'Copy':
+            self.erp_y[self.erp_y == 1] = -1
+            self.erp_y[self.erp_y == 0] = 1
             tg = np.where(self.erp_y == 1)                               
             print('[ERP Target] : ', self.erp_stims[tg[0][0]] )
             self.erp_target.append(self.erp_stims[tg[0][0]]) 
@@ -252,7 +254,7 @@ class ERPOnline(OVBox):
 
                             self.filter_and_epoch(stim)
                             self.predict(commands)
-                            self.command = random.choice(commands)
+                            # self.command = random.choice(commands)
                             print('[ERP] Command to send is: ', self.command)
                             
                             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                                                 
