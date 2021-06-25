@@ -8,15 +8,15 @@ from pyLpov.io.models import load_model, predict_openvino_model
 # from pyLpov.utils.utils import is_keras_model
 # from tensorflow.keras.models import load_model
 import numpy as np
-import pandas as pd
-import logging
-import pickle
+# import pandas as pd
+# import logging
+# import pickle
 import socket
 import random
-import os
+# import os
 
 
-np.set_printoptions(precision=4)
+# np.set_printoptions(precision=4)
 OVTK_StimulationLabel_Base = 0x00008100
 
 class SSVEPpredictor(OVBox):
@@ -142,32 +142,25 @@ class SSVEPpredictor(OVBox):
         # print('[current Time:]', datetime.datetime.now())
         self.ssvep_stims = np.array(self.ssvep_stims)                          
         # self.ssvep_end = int(np.ceil(stim.date * self.fs))
-        self.ssvep_end = np.ceil(stim.date * self.fs).astype(int) 
+        # self.ssvep_end = np.ceil(stim.date * self.fs).astype(int) 
         self.ssvep_y = np.array(self.ssvep_y) 
-        mrk = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin
+        # mrk = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin
+        mrk = np.array(self.ssvep_stims_time) - self.ssvep_begin
                 
         # ssvep_signal = processing.eeg_filter(self.signal[:, self.ssvep_begin:self.ssvep_end].T, self.fs, self.low_pass, self.high_pass, self.filter_order)                            
         ssvep_signal = eeg_filter(self.signal[:, self.ssvep_begin:self.ssvep_end].T, self.fs, self.low_pass, self.high_pass, self.filter_order)                            
-
-        # print(f"signal shape: {ssvep_signal.shape}, Markers: {mrk}")
-        
-        '''
-        if len(self.epoch_duration) > 1:
-            dur = (self.epoch_duration * self.fs).astype(int)
-        else:
-            dur = np.array([0, self.epoch_duration[0]*self.fs], dtype=int)
-        '''
-
+        # ssvep_signal = bandpass(self.signal[:, self.ssvep_begin:self.ssvep_end].T, [self.low_pass, self.high_pass], self.fs, self.filter_order)                          
         # print(f"dur : {dur}")
         # ssvep_epochs = processing.eeg_epoch(ssvep_signal, dur, mrk, self.fs)
-        ssvep_epochs = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs) 
+        
+        # ssvep_epochs = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs) 
         # ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([0, self.samples],dtype=int), mrk, self.fs)
         # ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([int(0.1*self.fs), self.samples],dtype=int), mrk, self.fs)
-        self.ssvep_x = ssvep_epochs.squeeze()
-        # print(f"ssvep_x shape: {self.ssvep_x.shape}")
-        
+        # self.ssvep_x = ssvep_epochs.squeeze()
+        self.ssvep_x = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs).squeeze()
+        # self.ssvep_x  = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs, baseline_correction=True).squeeze()
         del ssvep_signal
-        del ssvep_epochs
+        # del ssvep_epochs
         del mrk        
     
     def predict(self):
@@ -256,20 +249,24 @@ class SSVEPpredictor(OVBox):
                             print('[SSVEP trial start]', stim.date)
                             if(len(self.ssvep_stims_time) == 0):
                                 self.tr_dur.append(stim.date)
-                                self.ssvep_begin = int(np.floor(stim.date * self.fs))
+                                # self.ssvep_begin = int(np.floor(stim.date * self.fs))
+                                self.ssvep_begin = int(stim.date * self.fs)
 
                         if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_VisualSteadyStateStimulationStart']):
                                 print('[SSVEP Visual_stim_start]', stim.date)
+                                # self.ssvep_stims_time.append(np.floor(stim.date*self.fs).astype(int))
+                                self.ssvep_stims_time.append(int(stim.date*self.fs))
 
                         if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OVTK_StimulationLabel_Base+len(self.frequencies)):
                                 self.ssvep_y.append(stim.identifier - OVTK_StimulationLabel_Base)
                                 print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
-                                self.ssvep_stims_time.append(np.floor(stim.date*self.fs))                                  
+                                # self.ssvep_stims_time.append(np.floor(stim.date*self.fs).astype(int))                                  
 
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']):                            
                             print('[SSVEP trial stop]', stim.date)
-                            print('[TRIAL duration:]', stim.date - self.ssvep_stims_time[0] / self.fs)
-
+                            print('[Stim duration:]', stim.date - self.ssvep_stims_time[0] / self.fs)
+                            # self.ssvep_end = np.ceil(stim.date * self.fs).astype(int)
+                            self.ssvep_end = int(stim.date * self.fs)                            
                             self.filter_and_epoch(stim)
                             self.predict()
                             # commands = ['1', '2', '3', '4']
