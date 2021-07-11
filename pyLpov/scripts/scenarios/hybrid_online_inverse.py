@@ -221,6 +221,7 @@ class HybridOnline(OVBox):
                 # predictions[predictions > .5] = 1.
             else:
                 predictions = self.erp_model.predict(self.erp_x)
+            print("ERP pred :", predictions, self.erp_stims)
             self.command, idx = utils.select_target(predictions, self.erp_stims, commands)
         elif self.erp_stimulation == 'Dual' or self.stimulation == 'Multi':
             events = self.erp_stims
@@ -256,11 +257,11 @@ class HybridOnline(OVBox):
         
         elif paradigm == 'SSVEP':
             self.ssvep_y = np.array(self.ssvep_y)
-            if self.mode == 'Copy':
-                print('[SSVEP] preds:', self.command, ' target:', self.ssvep_y)
-                if int(self.command) == self.ssvep_y:
-                    self.ssvep_correct += 1
-                self.ssvep_target.append(self.ssvep_y[-1])
+            # if self.mode == 'Copy':
+            print('[SSVEP] preds:', self.command, ' target:', self.ssvep_y)
+            if int(self.command) == self.ssvep_y:
+                self.ssvep_correct += 1
+            self.ssvep_target.append(self.ssvep_y[-1])
 
     def ssvep_predict(self):
         '''
@@ -320,27 +321,25 @@ class HybridOnline(OVBox):
     def ERP_trial(self, stim):
         '''
         '''
-        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch):                       
-            print('[ERP trial start]', stim.date)
-            self.tr_dur.append(stim.date)
+        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and self.switch):                       
+            print('[ERP trial start]', stim.date)            
             self.ssvep_y = []
             self.ssvep_stims_time = []                          
             if(len(self.erp_stims_time) == 0):
-                self.erp_begin = int(np.floor(stim.date * self.fs))                                
+                self.erp_begin = int(np.floor(stim.date * self.fs))
                         
         if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_Target'] or 
-            stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_NonTarget']) and not self.switch: 
+            stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_NonTarget'] and self.switch):            
             self.mode = 'Copy'
             self.erp_y.append(stim.identifier - OpenViBE_stimulation['OVTK_StimulationId_Target'])
                          
-        if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OpenViBE_stimulation['OVTK_StimulationId_LabelEnd'] and not self.switch) :
+        if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OpenViBE_stimulation['OVTK_StimulationId_LabelEnd'] and self.switch) :
             self.erp_stims.append(stim.identifier - OVTK_StimulationLabel_Base) 
             # print('[ERP stim]', stim.date, self.erp_stims[-1])
             self.tmp_list.append(np.floor(stim.date*self.fs))        
 
-        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and not self.switch):                            
+        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and self.erp_y):                            
             print('[ERP trial stop]', stim.date)
-
             self.erp_x = self.filter_and_epoch('ERP', stim)
             self.erp_predict()
             # self.command = '1'
@@ -351,31 +350,35 @@ class HybridOnline(OVBox):
             self.erp_pred.append(self.command)                       
                             
             self.print_if_target('ERP')
-            # switch to SSVEP, free memory
             self.erp_x = []
-            self.tmp_list = []
-            self.switch = True
+            self.tmp_list = []           
+                        
+            self.n_trials += 1   
+            self.print_results() 
+            self.switch = False
+            
 
     def SSVEP_trial(self, stim):
         '''
-        '''
-        self.erp_stims = []
-        self.erp_stims_time = []
-        self.erp_y = []
+        '''      
 
-        if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):                                
+        if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch): 
+            self.erp_stims = []
+            self.erp_stims_time = []
+            self.erp_y = []                               
             print('[SSVEP trial start]', stim.date)
+            self.tr_dur.append(stim.date)
             self.ssvep_begin = int(np.floor(stim.date * self.fs))                             
                             
-        if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_VisualSteadyStateStimulationStart']):
+        if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_VisualSteadyStateStimulationStart'] and not self.switch):
             print('[SSVEP Visual_stim_start]', stim.date)
                             
-        if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OVTK_StimulationLabel_Base+len(self.ssvep_frequencies)):
+        if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OVTK_StimulationLabel_Base+len(self.ssvep_frequencies) and not self.switch):
             self.ssvep_y.append(stim.identifier - OVTK_StimulationLabel_Base)
             print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
             self.ssvep_stims_time.append(np.floor(stim.date*self.fs)) 
 
-        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and self.ssvep_y):        
+        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and not self.switch):        
             print('[SSVEP trial stop]', stim.date)    
 
             # print('[TRIAL duration:]', stim.date - self.ssvep_stims_time[0] / 512)
@@ -388,12 +391,10 @@ class HybridOnline(OVBox):
             self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.ssvep_feedback_port))                                
             self.ssvep_pred.append(self.command)
 
-            self.print_if_target('SSVEP')                                       
-                                
-            self.switch = False
-            self.n_trials += 1   
-
-            self.print_results()            
+            self.print_if_target('SSVEP')                                    
+            
+            self.switch = True
+                       
 
     def process(self):        
         
@@ -408,13 +409,11 @@ class HybridOnline(OVBox):
                 for stimIdx in range(len(chunk)):
                     if chunk:
                         stim = chunk.pop()               
-
-                        # ERP session
-                        self.ERP_trial(stim)
-
                         # SSVEP session
+                        self.SSVEP_trial(stim)
+                        
                         if self.switch:
-                            self.SSVEP_trial(stim)                                                               
+                            self.ERP_trial(stim)                                                            
                                                     
                         # Ending Experiment 
                         if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop']:

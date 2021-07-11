@@ -1,5 +1,4 @@
 from __future__ import division
-# from numba import jit
 # from scipy.linalg import eig
 # from scipy import sqrt
 from scipy.signal import butter, filtfilt 
@@ -9,6 +8,7 @@ import numpy as np
 # import  os
 
 # Filter
+
 def eeg_filter(eeg, fs, low_pass, high_pass, order):
     # assert( high_pass > low_pass), 'Band-pass filtering: High cutoff frequency should be higher than low cutoff frequency'
     # B, A = butter(order, np.array([low_pass, high_pass], dtype=float)/(fs/2), btype='bandpass')
@@ -29,7 +29,7 @@ def eeg_epoch(eeg, epoch_length, markers):
     return eeg_epochs
 '''
 
-# @jit(nopython=True)
+
 def eeg_epoch(eeg, epoch_length, markers, fs):
     start = np.around(0.2*fs).astype(int)
     ep = epoch_length[0]
@@ -45,7 +45,7 @@ def eeg_epoch(eeg, epoch_length, markers, fs):
     eeg_epochs = eeg_epochs[start+ep:, :, :]
     return eeg_epochs
 
-# @jit(nopython=True)
+
 # Feature extraction, downsample + moving average
 def eeg_feature(eeg, downsample, moving_average):
     samples, channels, epochs, trials = eeg.shape
