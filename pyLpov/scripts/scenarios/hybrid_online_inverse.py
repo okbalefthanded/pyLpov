@@ -221,7 +221,6 @@ class HybridOnline(OVBox):
                 # predictions[predictions > .5] = 1.
             else:
                 predictions = self.erp_model.predict(self.erp_x)
-            print("ERP pred :", predictions, self.erp_stims)
             self.command, idx = utils.select_target(predictions, self.erp_stims, commands)
         elif self.erp_stimulation == 'Dual' or self.stimulation == 'Multi':
             events = self.erp_stims
@@ -297,7 +296,8 @@ class HybridOnline(OVBox):
             print('Trial N :', self.n_trials, ' / ERP Pred : ', self.erp_pred)
             print('Trial N :', self.n_trials, ' / SSVEP Target : ', self.ssvep_target)
             print('Trial N :', self.n_trials, ' / SSVEP Pred : ', self.ssvep_pred)
-            print('Trial N :', self.n_trials, ' / ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100, '/  SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100 )                              
+            print('Trial N :', self.n_trials, ' / ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100, '/  SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100 )
+                                          
 
     def experiment_end(self):
         '''
@@ -375,7 +375,7 @@ class HybridOnline(OVBox):
                             
         if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OVTK_StimulationLabel_Base+len(self.ssvep_frequencies) and not self.switch):
             self.ssvep_y.append(stim.identifier - OVTK_StimulationLabel_Base)
-            print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
+            # print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
             self.ssvep_stims_time.append(np.floor(stim.date*self.fs)) 
 
         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop'] and not self.switch):        

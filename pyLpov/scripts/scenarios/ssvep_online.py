@@ -32,7 +32,9 @@ class SSVEPpredictor(OVBox):
         self.model_path = None
         self.keras_model = False
         self.model_file_type = ''
-        self.frequencies = ['idle', 10, 9, 8]
+        # self.frequencies = ['idle', 8, 9, 10, 11]
+        self.frequencies = ['idle', 8, 9, 10]
+        # self.frequencies = ['idle', 10, 9, 8]
         # self.frequencies = ['idle', 11, 10, 9, 8]
         # self.frequencies = ['idle', 9.5, 9, 8.5, 8]
         # self.frequencies = ['idle', 8.57, 6.67, 12, 5.45]

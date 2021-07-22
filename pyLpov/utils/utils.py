@@ -1,9 +1,11 @@
 from glob import glob
 from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import GridSearchCV
-import os
-import yaml
 import numpy as np
+import yaml
+from math import log2
+import os
+
 
 # calculate score for each stimulus and select the target
 def select_target(predictions, events, commands):
@@ -113,3 +115,21 @@ def create_components_from_config(config):
 def make_pipeline_from_components(components):
     pipeline = make_pipeline(*components)
     return pipeline
+
+
+def itr(n, p, t):
+    """Calcuate information transfer rate (ITR)
+
+    Parameters
+    ----------
+    n : int
+        number of commands
+    p : float
+        selection accuracy ( [0, 1])
+    t : float
+        Selection time in seconds
+    """
+    if p == 1.:
+        return log2(n) * (60. / t)
+    else:
+        return (log2(n) + p*log2(p) + (1.-p)*log2((1.-p)/(n-1.)))* (60./t)
