@@ -150,7 +150,7 @@ class ERPOnline(OVBox):
         erp_signal = processing.eeg_filter(self.signal[:, self.erp_begin:self.erp_end].T, self.fs, self.erp_lowPass, self.erp_highPass, self.erp_filterOrder)
         strt = int(0.1*self.fs)
         # np.array([strt, self.erp_epochDuration],dtype=int)
-        ep = np.ceil(np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
+        # ep = np.ceil(np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
         ep = (np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
         erp_epochs = processing.eeg_epoch(erp_signal,ep , mrk, self.fs)
         self.erp_x = erp_epochs
@@ -163,20 +163,26 @@ class ERPOnline(OVBox):
         '''
         predictions = []
         nbr = 1
+        
         if self.stimulation == 'Single':
             if self.keras_model or self.model_file_type == 'xml': 
                 if self.model_file_type == 'h5':               
                     predictions = self.erp_model.predict(self.erp_x.transpose((2,1,0)))
                 elif self.model_file_type == 'xml':
                     # predictions = predict_openvino_model(self.erp_model, self.erp_x.transpose((2,1,0)))
+                    # predictions = [predict_openvino_model(self.erp_model,  self.erp_x.transpose((2,1,0))[i][None,...]).item() for i in range(self.erp_x.shape[-1])]
+                    predictions = [self.erp_model.predict(self.erp_x.transpose((2,1,0))[i][None,...]) for i in range(self.erp_x.shape[-1])]
+                    '''
                     for i in range(self.erp_x.shape[-1]):
                         epoch = self.erp_x.transpose((2,1,0))[i][None,...]
                         predictions.append(predict_openvino_model(self.erp_model, epoch).item())
+                    '''
                 # predictions[predictions > .5] = 1.
             else:
                 # print("[ERP epoch shape] ", self.erp_x.shape)
                 predictions = self.erp_model.predict(self.erp_x)
             self.command, idx = utils.select_target(predictions, self.erp_stims, commands)
+        
         elif self.stimulation == 'Dual' or self.stimulation == 'Multi':
             events = np.array(self.erp_stims)
             if self.stimulation == 'Dual':
@@ -207,15 +213,6 @@ class ERPOnline(OVBox):
         self.erp_movingAverage = int(self.setting["ERP Moving Average"])
         self.erp_model_path = self.setting["Classifier"]
         self.erp_model, self.keras_model, self.model_file_type = load_model(self.erp_model_path)
-        '''
-        if utils.is_keras_model(self.erp_model_path):
-            # Keras model
-            self.erp_model = load_model(self.erp_model_path)
-            self.keras_model = True
-        else:
-            # sklearn model
-            self.erp_model = pickle.load(open(self.erp_model_path, 'rb'))
-        '''
         self.stimulation = str(self.setting["Stimulation"])
 
     def process(self):        

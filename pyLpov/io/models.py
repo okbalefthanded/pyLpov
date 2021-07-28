@@ -1,6 +1,7 @@
 from tensorflow.python.framework.convert_to_constants import convert_variables_to_constants_v2
 from tensorflow.keras.models import load_model as K_load_model
 from openvino.inference_engine import IECore
+from pyLpov.models.openvino import OpenVinoModel
 from tensorflow import keras
 import tensorflow as tf
 import numpy as np
@@ -78,8 +79,10 @@ def load_openvino_model(filepath):
     ie = IECore()
     net = ie.read_network(model=model_xml, weights=model_bin)
     exec_net = ie.load_network(network=net, device_name="CPU")
+    opn_model = OpenVinoModel(exec_net)
     # net.batch_size = 1
-    return exec_net
+    # return exec_net
+    return opn_model
 
 
 def predict_openvino_model(net, epoch):
@@ -101,9 +104,6 @@ def predict_openvino_model(net, epoch):
     """
     input_name = next(iter(net.input_info))
     output_name = next(iter(net.outputs))
-    # ie = IECore()
-    # number of request can be specified by parameter num_requests, default 1
-    # exec_net = ie.load_network(network=net, device_name="CPU")
 
     # we have one request only, see num_requests above
     # request = exec_net.requests[0]
@@ -115,8 +115,9 @@ def predict_openvino_model(net, epoch):
 
     # read the result
     prediction_openvino_blob = request.output_blobs[output_name]
-    prediction_openvino = prediction_openvino_blob.buffer
-    return prediction_openvino
+    # prediction_openvino = prediction_openvino_blob.buffer
+    # return prediction_openvino
+    return prediction_openvino_blob.buffer
 
 def model_type(filepath):
     """Determine model's type (as file's extension) from filepath 

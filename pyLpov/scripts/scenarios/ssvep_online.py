@@ -32,8 +32,8 @@ class SSVEPpredictor(OVBox):
         self.model_path = None
         self.keras_model = False
         self.model_file_type = ''
-        # self.frequencies = ['idle', 8, 9, 10, 11]
-        self.frequencies = ['idle', 8, 9, 10]
+        self.frequencies = ['idle', 8, 9, 10, 11]
+        # self.frequencies = ['idle', 8, 9, 10]
         # self.frequencies = ['idle', 10, 9, 8]
         # self.frequencies = ['idle', 11, 10, 9, 8]
         # self.frequencies = ['idle', 9.5, 9, 8.5, 8]
@@ -180,11 +180,7 @@ class SSVEPpredictor(OVBox):
             # ssvep_predictions = np.array(ssvep_predictions)                      
         elif self.mode == 'async':
             if self.keras_model or self.model_file_type == 'xml':
-                if self.model_file_type == 'h5':
-                    ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0))).argmax() + 1
-                elif self.model_file_type == 'xml':
-                    ssvep_predictions = predict_openvino_model(self.ssvep_model, self.ssvep_x[..., None].transpose((2, 1, 0)))
-                    ssvep_predictions = ssvep_predictions.argmax() + 1
+                ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0))).argmax() + 1
             else:
                 ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None]) + 1
 

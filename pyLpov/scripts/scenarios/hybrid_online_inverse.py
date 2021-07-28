@@ -65,7 +65,8 @@ class HybridOnline(OVBox):
         # self.ssvep_frequencies = ['idle', 8.57,6.67,12,5.54]
         # self.ssvep_frequencies = ['idle', 8.57,6.67,12,5.54]
         # self.ssvep_frequencies = ['idle', 11, 10, 9, 8]
-        self.ssvep_frequencies = ['idle', 10, 9, 8]
+        # self.ssvep_frequencies = ['idle', 10, 9, 8]
+        self.ssvep_frequencies = ['idle', 8, 9, 10, 11]        
         self.ssvep_epochDuration = 4.0
         self.ssvep_samples = 0
         self.ssvep_references = []   
@@ -214,10 +215,13 @@ class HybridOnline(OVBox):
                 if self.erp_model_file_type == 'h5':
                     predictions = self.erp_model.predict(self.erp_x.transpose((2,1,0)))
                 elif self.erp_model_file_type == 'xml':
+                    predictions = [self.erp_model.predict(self.erp_x.transpose((2,1,0))[i][None,...]) for i in range(self.erp_x.shape[-1])]
+                    '''
                     # predictions = predict_openvino_model(self.erp_model, self.erp_x.transpose((2,1,0)))
                     for i in range(self.erp_x.shape[-1]):
                         epoch = self.erp_x.transpose((2,1,0))[i][None,...]
                         predictions.append(predict_openvino_model(self.erp_model, epoch).item())
+                    '''
                 # predictions[predictions > .5] = 1.
             else:
                 predictions = self.erp_model.predict(self.erp_x)
@@ -276,11 +280,8 @@ class HybridOnline(OVBox):
         elif self.ssvep_mode == 'async':
             # ssvep_predictions = self.ssvep_model.predict(ssvep_epochs)
             if self.ssvep_keras_model or self.ssvep_model_file_type == 'xml':
-                if self.ssvep_model_file_type == 'h5':
-                    ssvep_predictions = self.ssvep_model.predict(self.ssvep_x.transpose((2, 1, 0))).argmax() + 1
-                elif self.ssvep_model_file_type == 'xml':
-                    ssvep_predictions = predict_openvino_model(self.ssvep_model, self.ssvep_x.transpose((2, 1, 0)))
-                    ssvep_predictions = ssvep_predictions.argmax() + 1
+                ssvep_predictions = self.ssvep_model.predict(self.ssvep_x.transpose((2, 1, 0))).argmax() + 1
+                # ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0))).argmax() + 1
             else:
                 ssvep_predictions = self.ssvep_model.predict(self.ssvep_x)
                 # ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None]) + 1 #TRCA
