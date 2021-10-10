@@ -153,7 +153,8 @@ class ERPOnline(OVBox):
         # ep = np.ceil(np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
         ep = (np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
         erp_epochs = processing.eeg_epoch(erp_signal,ep , mrk, self.fs)
-        self.erp_x = erp_epochs
+        # self.erp_x = erp_epochs
+        self.erp_x = erp_epochs.astype(np.float16)
         del erp_signal
         del erp_epochs
         del mrk

@@ -5,6 +5,7 @@ from pyLpov.proc.processing import eeg_filter, eeg_epoch
 # from pyLpov.machine_learning.cca import CCA
 from baseline.ssvep.cca import CCA
 from pyLpov.io.models import load_model, predict_openvino_model
+from pyLpov.utils.experiment import serialize_experiment, update_experiment_info
 # from pyLpov.utils.utils import is_keras_model
 # from tensorflow.keras.models import load_model
 import numpy as np
@@ -73,9 +74,15 @@ class SSVEPpredictor(OVBox):
         self.trial_ended = False
         # 
         self.dur  = 0
+        self.file_name = ''
+        self.is_replay = False
 
     def initialize(self):
         #
+        if 'File Name' in self.setting:
+            self.file_name = f"{self.setting['File Name']}.json"
+        else:
+            self.is_replay = True
         self.experiment_mode = self.setting["Experiment Mode"]
         self.fs = int(self.setting['Sample Rate'])
         # self.epoch_duration = np.floor(float(self.setting['Epoch Duration (in sec)']))
@@ -121,6 +128,19 @@ class SSVEPpredictor(OVBox):
             # self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb')) #py2
             # generate reference by itcca method
             self.references = self.ssvep_model
+        # create json file
+        info = {'title': "SSVEP_LARESI",
+                'stimulation' : int(self.epoch_duration[1]*1000),
+                'break_duration' : int(self.epoch_duration[0]*1000),
+                'repetition': 0,
+                'stimuli' : len(self.frequencies),
+                'phrase' : [],
+                'stim_type' : 'Sinusoidal',
+                'frequencies' : self.frequencies,
+                'control' : self.mode 
+                }
+        if not self.is_replay:
+            serialize_experiment(self.file_name, info)
 
     def stream_signal(self):
         '''
@@ -161,7 +181,8 @@ class SSVEPpredictor(OVBox):
         # ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([0, self.samples],dtype=int), mrk, self.fs)
         # ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([int(0.1*self.fs), self.samples],dtype=int), mrk, self.fs)
         # self.ssvep_x = ssvep_epochs.squeeze()
-        self.ssvep_x = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs).squeeze()
+        # self.ssvep_x = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs).squeeze()
+        self.ssvep_x = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs).squeeze().astype(np.float16)
         # self.ssvep_x  = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs, baseline_correction=True).squeeze()
         del ssvep_signal
         # del ssvep_epochs
@@ -216,6 +237,10 @@ class SSVEPpredictor(OVBox):
         '''
         '''
         print('EXPERIMENT ENDS')
+        # update experiment json file
+        if not self.is_replay:
+            update_experiment_info(self.file_name, "repetition", self.n_trials // len(self.frequencies))
+
         if self.experiment_mode == 'Copy':
             print(' SSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)
             cm = confusion_matrix(np.array(self.ssvep_target), np.array(self.ssvep_pred))

@@ -6,7 +6,7 @@
 
 ### Version requirements
 - [OpenVibe <= 3.0.0](http://openvibe.inria.fr/downloads/)
-- Python 3.8 
+- Python 3.7 and above 
 
 ---
 
@@ -51,7 +51,7 @@ A configuration file specifies the pipline chain of operations from preprocessin
 see ```cmd_tuto.bat``` on how to set and execute the offline analysis, and follow ```sa_hybrid_train.py``` in pyLpov/scripts/standalone on how to set an automatice processing script.
 
 #### - End-To-End Deep Neural Networks
-Trained Keras models saved in H5 format are supported.
+Trained Keras models saved in H5 and TF2 SavedModl format are supported.
 
 ### Online processing 
 - Make sure the python scripting box is available in the OpenVibe Designer Scripting tab.

@@ -215,7 +215,8 @@ def model_optimizer_savedmodel(model_dir, output_dir, input_shape):
     mo_tf_path = "C:\Program Files (x86)\Intel\openvino_2021\deployment_tools\model_optimizer\mo_tf.py"
     input_shape_str = str(input_shape).replace(' ','')
     #!python {mo_tf_path} --saved_model_dir {model_dir} --output_dir {output_dir} --input_shape {input_shape_str} --data_type FP32 --disable_nhwc_to_nchw
+    # --data_type "FP32"
     cmd = subprocess.run(["python", mo_tf_path, "--saved_model_dir", model_dir, 
                          "--output_dir", output_dir, "--input_shape", input_shape_str,
-                         "--data_type", "FP32", "--disable_nhwc_to_nchw"])
+                         "--data_type", "FP16", "--disable_nhwc_to_nchw"])
     print(f"The exit code was: {cmd.returncode}")

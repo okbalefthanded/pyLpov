@@ -201,7 +201,7 @@ class HybridOnline(OVBox):
         del signal        
         del mrk
         
-        return epochs
+        return epochs.astype(np.float16)
 
     def erp_predict(self):
         '''
