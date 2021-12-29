@@ -33,13 +33,17 @@ class SSVEPpredictor(OVBox):
         self.model_path = None
         self.keras_model = False
         self.model_file_type = ''
+        # self.frequencies = ['idle', 16, 16.75, 17.25, 18]
+        # self.frequencies = ['idle', 9, 9.75, 10.5, 11.25]
+        # self.frequencies = ['idle', 9.25, 9.75, 10.25, 10.75]
         self.frequencies = ['idle', 8, 9, 10, 11]
         # self.frequencies = ['idle', 8, 9, 10]
         # self.frequencies = ['idle', 10, 9, 8]
         # self.frequencies = ['idle', 11, 10, 9, 8]
         # self.frequencies = ['idle', 9.5, 9, 8.5, 8]
         # self.frequencies = ['idle', 8.57, 6.67, 12, 5.45]
-        # self.frequencies = [14, 12, 10, 8]
+        # self.frequencies = ['idle', 8, 8.75, 9.5, 10.25]
+        # self.frequencies = ['idle', 8.25, 9, 9.75, 10.5]
         self.tr_dur = []
         #
         self.ssvep_stims = []
@@ -56,6 +60,7 @@ class SSVEPpredictor(OVBox):
         self.ssvep_target = []
         self.ssvep_pred = []
         #
+        self.async_trial = False
         self.mode = 'sync'      
         self.harmonics = 0
         self.fs = 512
@@ -107,6 +112,8 @@ class SSVEPpredictor(OVBox):
         if self.mode == 'sync':
             frequencies = self.frequencies[1:]
             self.frequencies = self.frequencies[1:]
+            # self.frequencies = np.arange(9.25, 15., 0.5).tolist()
+            # frequencies = self.frequencies
             # generate reference signals
             x = [ [np.cos(2*np.pi*f*t*i),np.sin(2*np.pi*f*t*i)] for f in frequencies for i in range(1, self.harmonics+1)]
             self.references = np.array(x).reshape(len(frequencies), 2*self.harmonics, self.samples)
@@ -159,7 +166,6 @@ class SSVEPpredictor(OVBox):
             
         del signal_chunk
 
-
     def filter_and_epoch(self, stim):
         '''
         '''
@@ -170,19 +176,27 @@ class SSVEPpredictor(OVBox):
         self.ssvep_y = np.array(self.ssvep_y) 
         # mrk = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin
         mrk = np.array(self.ssvep_stims_time) - self.ssvep_begin
-                
+        
         # ssvep_signal = processing.eeg_filter(self.signal[:, self.ssvep_begin:self.ssvep_end].T, self.fs, self.low_pass, self.high_pass, self.filter_order)                            
         ssvep_signal = eeg_filter(self.signal[:, self.ssvep_begin:self.ssvep_end].T, self.fs, self.low_pass, self.high_pass, self.filter_order)                            
         # ssvep_signal = bandpass(self.signal[:, self.ssvep_begin:self.ssvep_end].T, [self.low_pass, self.high_pass], self.fs, self.filter_order)                          
         # print(f"dur : {dur}")
         # ssvep_epochs = processing.eeg_epoch(ssvep_signal, dur, mrk, self.fs)
-        
+        # print(f"[Filter and epoch] : mrk {mrk} signal {ssvep_signal.shape} dur {self.dur}")
         # ssvep_epochs = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs) 
         # ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([0, self.samples],dtype=int), mrk, self.fs)
         # ssvep_epochs = processing.eeg_epoch(ssvep_signal, np.array([int(0.1*self.fs), self.samples],dtype=int), mrk, self.fs)
         # self.ssvep_x = ssvep_epochs.squeeze()
         # self.ssvep_x = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs).squeeze()
-        self.ssvep_x = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs).squeeze().astype(np.float16)
+        '''
+        if (mrk + self.dur.max()) > ssvep_signal.shape[0]:
+            dur = np.array([0. ,0.5 * self.fs], dtype=int)
+        else:
+            dur = self.dur
+        '''
+        dur = self.dur
+        self.ssvep_x = eeg_epoch(ssvep_signal, dur, mrk, self.fs).squeeze().astype(np.float16)
+        # self.ssvep_x = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs).squeeze().astype(np.float16)
         # self.ssvep_x  = eeg_epoch(ssvep_signal, self.dur, mrk, self.fs, baseline_correction=True).squeeze()
         del ssvep_signal
         # del ssvep_epochs
@@ -200,10 +214,14 @@ class SSVEPpredictor(OVBox):
             # ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[51:self.samples,:].transpose((1,0))) + 1                                  
             # ssvep_predictions = np.array(ssvep_predictions)                      
         elif self.mode == 'async':
+            # FIXME
+            
             if self.keras_model or self.model_file_type == 'xml':
                 ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0))).argmax() + 1
             else:
                 ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None]) + 1
+            
+            # ssvep_predictions = np.array([1])
 
         self.command = str(ssvep_predictions.item())
 
@@ -255,11 +273,28 @@ class SSVEPpredictor(OVBox):
         stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0., 0.)) 
         self.output[0].append(stimSet)     
        
+    def async_limit(self):
+        """Test if Trial length reached the duration of 500 ms (used for async mode)
+        """
+        # dur = self.signal.shape[1] - self.ssvep_begin
+        if self.ssvep_stims_time:
+            dur = self.signal.shape[1] - self.ssvep_stims_time[-1]
+            self.async_trial = True
+            return dur >= (0.5 * self.fs)        
+    
     def process(self):
         
         # stream signal
         if self.input[0]:            
             self.stream_signal()        
+        '''
+        if self.mode == 'async':
+            if self.async_limit():
+                # print("Reached 500 ms", self.signal.shape)
+                # predict
+                # FIXME
+                self.feedback_socket.sendto("-1".encode(), (self.hostname, self.feedback_port)) 
+        '''
         
         # collect Stimulations markers and times for each paradigm
         if self.input[1]:
@@ -285,15 +320,17 @@ class SSVEPpredictor(OVBox):
                         if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OVTK_StimulationLabel_Base+len(self.frequencies)):
                                 self.ssvep_y.append(stim.identifier - OVTK_StimulationLabel_Base)
                                 print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
-                                # self.ssvep_stims_time.append(np.floor(stim.date*self.fs).astype(int))                                  
-
+                                # self.ssvep_stims_time.append(np.floor(stim.date*self.fs).astype(int))                     
+                        
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']):                            
+                            
                             print('[SSVEP trial stop]', stim.date)
                             print('[Stim duration:]', stim.date - self.ssvep_stims_time[0] / self.fs)
                             # self.ssvep_end = np.ceil(stim.date * self.fs).astype(int)
-                            self.ssvep_end = int(stim.date * self.fs)                            
+                            self.ssvep_end = int(stim.date * self.fs)                             
                             self.filter_and_epoch(stim)
                             self.predict()
+                            
                             # commands = ['1', '2', '3', '4']
                             # self.command = random.choice(commands)
                             

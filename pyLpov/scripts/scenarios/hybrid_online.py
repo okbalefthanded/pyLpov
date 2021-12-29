@@ -65,7 +65,8 @@ class HybridOnline(OVBox):
         # self.ssvep_frequencies = ['idle', 8.57,6.67,12,5.54]
         # self.ssvep_frequencies = ['idle', 8.57,6.67,12,5.54]
         # self.ssvep_frequencies = ['idle', 11, 10, 9, 8]
-        self.ssvep_frequencies = ['idle', 10, 9, 8]
+        # self.ssvep_frequencies = ['idle', 10, 9, 8]
+        self.ssvep_frequencies = ['idle', 8, 9, 10, 11]
         self.ssvep_epochDuration = 4.0
         self.ssvep_samples = 0
         self.ssvep_references = []   
@@ -292,10 +293,10 @@ class HybridOnline(OVBox):
         '''
         print('Trial N :', self.n_trials)
         if self.mode == 'Copy':
-            print('Trial N :', self.n_trials, ' / ERP Target : ', self.erp_target)
-            print('Trial N :', self.n_trials, ' / ERP Pred : ', self.erp_pred)
-            print('Trial N :', self.n_trials, ' / SSVEP Target : ', self.ssvep_target)
-            print('Trial N :', self.n_trials, ' / SSVEP Pred : ', self.ssvep_pred)
+            print('Trial N :', self.n_trials, ' / ERP Target : ', self.erp_target, ' / ERP Pred : ', self.erp_pred)
+            # print('Trial N :', self.n_trials, ' / ERP Pred : ', self.erp_pred)
+            print('Trial N :', self.n_trials, ' / SSVEP Target : ', self.ssvep_target, ' / SSVEP Pred : ', self.ssvep_pred)
+            # print('Trial N :', self.n_trials, ' / SSVEP Pred : ', self.ssvep_pred)
             print('Trial N :', self.n_trials, ' / ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100, '/  SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100 )                              
 
     def experiment_end(self):
@@ -304,7 +305,12 @@ class HybridOnline(OVBox):
         print('EXPERIMENT ENDS')
         if self.mode == 'Copy':
             print(' ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100)
-            print(' SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)                           
+            print(' SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)
+            erp_correct = np.array(self.erp_target) == np.array(self.erp_pred)
+            ssvep_correct = np.array(self.ssvep_target) == np.array(self.ssvep_pred)
+            hybrid_acc = np.logical_and(erp_correct, ssvep_correct).mean()
+            print(' Hybrid Accuracy : ', hybrid_acc)
+                                   
         self.switch = False
         del self.signal
         del self.erp_x

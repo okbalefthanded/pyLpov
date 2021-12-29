@@ -125,11 +125,13 @@ def itr(n, p, t):
     n : int
         number of commands
     p : float
-        selection accuracy ( [0, 1])
+        selection accuracy ( (0, 1])
     t : float
         Selection time in seconds
     """
-    if p == 1.:
+    if p == 0:
+        return 0
+    elif p == 1:
         return log2(n) * (60. / t)
     else:
         return (log2(n) + p*log2(p) + (1.-p)*log2((1.-p)/(n-1.)))* (60./t)
