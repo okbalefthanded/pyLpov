@@ -7,6 +7,7 @@ import tensorflow as tf
 import numpy as np
 import subprocess
 import pickle
+import torch
 import h5py
 import os
 
@@ -20,7 +21,18 @@ def is_keras_model(filepath):
     filepath : str
         classifier filepath
     """
-    return h5py.is_hdf5(filepath)   
+    return h5py.is_hdf5(filepath)
+
+def is_pytorch_model(filepath):
+    """Test whether a classifier is a PyTorch model
+
+    Parameters
+    ----------
+    filepath : str
+        classifier filepath
+    """
+    m_type = model_type(filepath)
+    return m_type == 'pth' or m_type == 'pt'   
 
 
 def load_model(filepath):
@@ -43,11 +55,20 @@ def load_model(filepath):
         deep_model = True
     else:
         file_type = model_type(filepath)
-        deep_model = is_keras_model(filepath)
+        deep_model = is_keras_model(filepath) or is_pytorch_model(filepath)
+    
     if deep_model or file_type== 'xml':        
         if file_type == 'h5' or file_type == 'tf':
             # regular Keras model
             model = K_load_model(filepath)
+        elif file_type == 'pth' or file_type == 'pt':
+            device = available_device()
+            # PyTorch Model
+            if file_type == 'pt':
+                file_type = 'pth'
+            model = torch.load(filepath, map_location=torch.device(device))
+            model.set_device(device)
+            model.eval()
         elif file_type == 'xml':
             # optimized OpenVINO model
             model = load_openvino_model(filepath)
@@ -56,6 +77,11 @@ def load_model(filepath):
         model = pickle.load(open(filepath, 'rb'),  encoding='latin1') #py3
     return model, deep_model, file_type
 
+
+def available_device():
+    """Returns 'cuda' if an CUDA GPU is available in the env, cpu otherwise.
+    """
+    return 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def load_openvino_model(filepath):
     """load openvino optimized model as inference engine network
