@@ -55,9 +55,9 @@ def load_model(filepath):
         deep_model = True
     else:
         file_type = model_type(filepath)
-        deep_model = is_keras_model(filepath) or is_pytorch_model(filepath)
+        deep_model = is_keras_model(filepath) or is_pytorch_model(filepath) or file_type == 'xml'
     
-    if deep_model or file_type== 'xml':        
+    if deep_model:         
         if file_type == 'h5' or file_type == 'tf':
             # regular Keras model
             model = K_load_model(filepath)
