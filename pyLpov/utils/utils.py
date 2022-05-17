@@ -6,6 +6,7 @@ import yaml
 from math import log2
 import os
 
+OVTK_StimulationLabel_Base = 0x00008100
 
 # calculate score for each stimulus and select the target
 def select_target(predictions, events, commands):
