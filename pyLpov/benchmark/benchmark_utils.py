@@ -9,7 +9,7 @@ cmds = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 def load_dataset(load_path):
     ds = LaresiEEG()
-    ds.generate_set(load_path, epoch=[.1, .5], band=[5.,12.])
+    ds.generate_set(load_path, epoch=[.1, .5], band=[5., 12.])
     return ds
 
 def character_selection(pred, events):
@@ -26,7 +26,7 @@ def train_pipeline(ds, clf):
     clf.fit(ds.epochs.squeeze(), ds.y.squeeze())
 
 
-def evaluate(ds_test, clf):
+def evaluate(ds_test, clf, verbose=0):
     # clf.fit(ds.epochs.squeeze(), ds.y.squeeze())
     pred = clf.predict(ds_test.epochs.squeeze())
     # pred = clf.predict_proba(ds_test.epochs.squeeze()).argmax(axis=1)
@@ -40,6 +40,7 @@ def evaluate(ds_test, clf):
     pr = character_selection(score, ds_test.events)
     rec = recall_score(ds_test.y.squeeze(), pred) * 100
     pr_acc = accuracy_score(phrase, pr)*100    
-    print(f"Accuracy: {acc} // AUC: {auc_score} // Precision: {pres} // Recall: {rec} // Correct Character Selection : {pr_acc}")
+    if verbose:
+        print(f"Accuracy: {acc} // AUC: {auc_score} // Precision: {pres} // Recall: {rec} // Correct Character Selection : {pr_acc}")
     # print("Confusion matrix:", confusion_matrix(ds_test.y.squeeze(), pred))
     return acc, auc_score, pres, rec, pr_acc
