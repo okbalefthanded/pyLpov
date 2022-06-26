@@ -30,7 +30,7 @@ def evaluate(ds_test, clf, verbose=0):
     # clf.fit(ds.epochs.squeeze(), ds.y.squeeze())
     pred = clf.predict(ds_test.epochs.squeeze())
     # pred = clf.predict_proba(ds_test.epochs.squeeze()).argmax(axis=1)
-    score = clf.predict_proba(ds_test.epochs.squeeze()).argmax(axis=1)
+    score = clf.predict_proba(ds_test.epochs.squeeze()) #.argmax(axis=1)
     # acc = accuracy_score(ds_test.y.squeeze(), pred) * 100
     acc = balanced_accuracy_score(ds_test.y.squeeze(), pred) * 100
     auc_score = roc_auc_score(ds_test.y.squeeze(), pred) * 100
