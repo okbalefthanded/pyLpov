@@ -34,7 +34,7 @@ def evaluate(ds_test, clf, verbose=0):
     # acc = accuracy_score(ds_test.y.squeeze(), pred) * 100
     acc = balanced_accuracy_score(ds_test.y.squeeze(), pred) * 100
     # auc_score = roc_auc_score(ds_test.y.squeeze(), pred)
-    if score.ndim > 1:
+    if score.ndim > 1 and score.shape[1] == 2:
         score = score[:, 1]
     auc_score = roc_auc_score(ds_test.y.squeeze(), score) 
     pres = precision_score(ds_test.y.squeeze(), pred) * 100
