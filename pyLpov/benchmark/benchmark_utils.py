@@ -33,7 +33,8 @@ def evaluate(ds_test, clf, verbose=0):
     score = clf.predict_proba(ds_test.epochs.squeeze()) #.argmax(axis=1)
     # acc = accuracy_score(ds_test.y.squeeze(), pred) * 100
     acc = balanced_accuracy_score(ds_test.y.squeeze(), pred) * 100
-    auc_score = roc_auc_score(ds_test.y.squeeze(), pred) * 100
+    # auc_score = roc_auc_score(ds_test.y.squeeze(), pred)
+    auc_score = roc_auc_score(ds_test.y.squeeze(), score) 
     pres = precision_score(ds_test.y.squeeze(), pred) * 100
     phrase = ds_test.events[0, ds_test.y[0] == 1]
     # pr = character_selection(pred, ds_test.events)
