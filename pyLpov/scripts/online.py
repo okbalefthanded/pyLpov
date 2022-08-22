@@ -56,6 +56,7 @@ class OnLine(object):
         # 
         self.dur  = 0
         self.tr_dur = []
+        self.stim_dur = []
     
     def stream_signal(self, signal_chunk):
         signal_chunk = signal_chunk.pop()
@@ -113,8 +114,29 @@ class OnLine(object):
         del self.x
         del self.model
         jitter = np.diff(self.tr_dur)
+        if self.stim_dur:
+            self.stim_dur = np.array(self.stim_dur) - np.diff(self.epoch_duration)
+            print(f"Stim delay: {self.stim_dur.min()} {self.stim_dur.max()} {self.stim_dur.mean()}")        
         print('Trial durations delay: ',  jitter, jitter.min(), jitter.max(), jitter.mean())
+        print(f"Stim delay {self.stim_dur}")
+        
 
+    def decode(self, stim, commands=None):
+        self.filter_and_epoch(stim)
+        if commands:
+            self.predict(commands)
+        else:
+            self.predict()
+
+    def post_trial(self):
+        self.print_if_target()  
+        self.init_data()
+        self.print_results()
+
+    def feedback(self):
+        print(f"[{self.paradigm}] Command to send is: {self.command}")
+        self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.feedback_port))   
+    
     def predict_deep_model(self):
         '''
         '''
@@ -125,9 +147,15 @@ class OnLine(object):
             predictions = self.model.predict(self.x, normalize=True)                    
         elif self.model_file_type == 'xml':
             predictions = [self.model.predict(self.x[i][None,...]) for i in range(self.x.shape[0])]
+            if self.x.shape[0] == 1:
+                predictions = predictions[0]
         return predictions
 
     def transpose_epochs(self):
         if self.x.ndim == 2:
             self.x = self.x[...,None]
         self.x = self.x.transpose((2,1,0))
+
+    def set_begin(self, stim):
+        if(len(self.stims_time) == 0):
+            self.begin = int(np.floor(stim.date * self.fs))  

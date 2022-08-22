@@ -1,5 +1,7 @@
 numpy
 scipy
 scikit-learn
+torch
+tensorflow
 pandas
 h5py

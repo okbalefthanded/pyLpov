@@ -16,7 +16,7 @@ def character_selection(pred, events):
     pr = []
     for tr in range(0, len(events[0]), 9):
         for i in range(tr, tr+9):
-            command, idx = utils.select_target(pred, events[0, tr:tr+9], cmds)
+            command, idx = utils.select_target(pred[tr:tr+9], events[0, tr:tr+9], cmds)
         if command == '#':
             command = 0
         pr.append(command)
