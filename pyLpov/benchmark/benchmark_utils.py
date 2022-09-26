@@ -90,23 +90,29 @@ def train_pipeline_single(ds, clf):
 
 
 def evaluate_single(ds_test, clf, verbose=0):
-    # clf.fit(ds.epochs.squeeze(), ds.y.squeeze())
-    pred = clf.predict(ds_test.epochs.squeeze())
-    # pred = clf.predict_proba(ds_test.epochs.squeeze()).argmax(axis=1)
-    score = clf.predict_proba(ds_test.epochs.squeeze()) #.argmax(axis=1)
-    # acc = accuracy_score(ds_test.y.squeeze(), pred) * 100
-    acc = balanced_accuracy_score(ds_test.y.squeeze(), pred) * 100
-    # auc_score = roc_auc_score(ds_test.y.squeeze(), pred)
+    x = ds_test.epochs.squeeze()
+    y = ds_test.y.squeeze()
+    pred = clf.predict(x)
+    score = clf.predict_proba(x) #.argmax(axis=1)
+    acc = balanced_accuracy_score(y, pred) * 100
     if score.ndim > 1 and score.shape[1] == 2:
         score = score[:, 1]
-    auc_score = roc_auc_score(ds_test.y.squeeze(), score) 
-    pres = precision_score(ds_test.y.squeeze(), pred) * 100
+    auc_score = roc_auc_score(y, score) 
+    pres = precision_score(y, pred) * 100
     phrase = ds_test.events[0, ds_test.y[0] == 1]
-    # pr = character_selection(pred, ds_test.events)
     pr = character_selection(score, ds_test.events)
-    rec = recall_score(ds_test.y.squeeze(), pred) * 100
-    pr_acc = accuracy_score(phrase, pr)*100    
+    pr_acc = accuracy_score(phrase, pr)*100
+    rec = recall_score(ds_test.y.squeeze(), pred) * 100        
+    mcc = matthews_corrcoef(y, pred)
+    ece = calibration_error(torch.tensor(score), torch.tensor(y, dtype=int)).numpy().item()
     if verbose:
         print(f"Accuracy: {acc} // AUC: {auc_score} // Precision: {pres} // Recall: {rec} // Correct Character Selection : {pr_acc}")
-    # print("Confusion matrix:", confusion_matrix(ds_test.y.squeeze(), pred))
-    return acc, auc_score, pres, rec, pr_acc
+    metrics = { 'char': pr_acc,
+                'ba':   acc,
+                'auc': auc_score,
+                'recall': rec,
+                #'brier': brier_score_loss(y, yp, pos_label=1),
+                'mcc': mcc,
+                'ece':  ece
+              }
+    return metrics
