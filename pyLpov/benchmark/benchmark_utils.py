@@ -3,7 +3,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score
 from aawedha.io.experimental.laresi_pilot_erp import LaresiEEG
 from sklearn.metrics import roc_auc_score, matthews_corrcoef
 from sklearn.metrics import precision_score, recall_score
-    
+
 # from pyLpov.io.laresi import LaresiEEG
 from pyLpov.utils import utils
 import torch
@@ -71,7 +71,7 @@ def evaluate(epochs, y, events, clf, verbose=0):
     pr_acc = accuracy_score(phrase, pr)*100
     rec = recall_score(y, pred) * 100
     mcc = matthews_corrcoef(y, pred)
-    ece = calibration_error(torch.tensor(score), torch.tensor(y, dtype=int))
+    ece = calibration_error(torch.tensor(score), torch.tensor(y, dtype=int)).numpy().item()
     metrics = { 'char': pr_acc,
                 'ba':   acc,
                 'auc': auc_score,
