@@ -3,11 +3,13 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score
 from aawedha.io.experimental.laresi_pilot_erp import LaresiEEG
 from sklearn.metrics import roc_auc_score, matthews_corrcoef
 from sklearn.metrics import precision_score, recall_score
+    
 # from pyLpov.io.laresi import LaresiEEG
 from pyLpov.utils import utils
 import torch
 
 cmds = [1, 2, 3, 4, 5, 6, 7, 8, 9] 
+
 
 def load_dataset(load_path):
     ds = LaresiEEG()
@@ -29,7 +31,7 @@ def train_pipeline(epochs, y, clf):
 
     Parameters
     ----------
-    epochs : Numpy Tensor (samples x channels x trials) 
+    epochs : Numpy Tensor (samples x channels x trials)
         epoched EEG trials
     y : 1d array
         epochs labels
@@ -39,7 +41,7 @@ def train_pipeline(epochs, y, clf):
     clf.fit(epochs, y)
 
 def evaluate(epochs, y, events, clf, verbose=0):
-    """Evaluate test data 
+    """Evaluate test data
 
     Parameters
     ----------
@@ -54,9 +56,9 @@ def evaluate(epochs, y, events, clf, verbose=0):
     Returns
     -------
     dict
-        Metric values 
+        Metric values
     """
-    
+
     pred = clf.predict(epochs)
     score = clf.predict_proba(epochs)
     acc = balanced_accuracy_score(y, pred) * 100
@@ -75,7 +77,7 @@ def evaluate(epochs, y, events, clf, verbose=0):
                 'auc': auc_score,
                 'recall': rec,
                 #'brier': brier_score_loss(y, yp, pos_label=1),
-                'matthews':mcc,
+                'mcc': mcc,
                 'ece':  ece
               }
     if verbose:
@@ -108,5 +110,3 @@ def evaluate_single(ds_test, clf, verbose=0):
         print(f"Accuracy: {acc} // AUC: {auc_score} // Precision: {pres} // Recall: {rec} // Correct Character Selection : {pr_acc}")
     # print("Confusion matrix:", confusion_matrix(ds_test.y.squeeze(), pred))
     return acc, auc_score, pres, rec, pr_acc
-
-
