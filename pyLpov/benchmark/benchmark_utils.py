@@ -71,6 +71,9 @@ def evaluate(epochs, y, events, clf, verbose=0):
     pr_acc = accuracy_score(phrase, pr)*100
     rec = recall_score(y, pred) * 100
     mcc = matthews_corrcoef(y, pred)
+    # quick hack for ECE
+    if score.min() == 0:
+        score[score==0] += 1e-10
     ece = calibration_error(torch.tensor(score), torch.tensor(y, dtype=int)).numpy().item()
     metrics = { 'char': pr_acc,
                 'ba':   acc,
