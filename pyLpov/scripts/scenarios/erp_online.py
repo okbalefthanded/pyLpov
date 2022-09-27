@@ -154,7 +154,7 @@ class ERPOnline(OVBox):
         ep = (np.array([0.1, 0.5])*self.fs).astype(int) # FIXME
         erp_epochs = processing.eeg_epoch(erp_signal,ep , mrk, self.fs)
         # self.erp_x = erp_epochs
-        self.erp_x = erp_epochs.astype(np.float16)
+        self.erp_x = erp_epochs #.astype(np.float16)
         del erp_signal
         del erp_epochs
         del mrk
@@ -260,8 +260,7 @@ class ERPOnline(OVBox):
                             # self.command = random.choice(commands)
                             print('[ERP] Command to send is: ', self.command)
                             
-                            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                                                 
-                                                      
+                            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.erp_feedback_port))                                                    
                             self.erp_pred.append(self.command)
                             self.print_if_target()  
                             self.init_data()

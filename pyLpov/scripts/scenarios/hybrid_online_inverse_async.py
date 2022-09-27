@@ -1,14 +1,15 @@
 from __future__ import print_function, division
-from sklearn.metrics import confusion_matrix
-from pyLpov.proc import processing
-from pyLpov.utils import utils
-from pyLpov.machine_learning.cca import CCA 
+from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score
 from pyLpov.io.models import load_model, predict_openvino_model
+from pyLpov.proc.processing import eeg_filter, eeg_epoch
+from pyLpov.machine_learning.cca import CCA
+from pyLpov.utils import utils
 import numpy as np
+import logging
 import random
 import socket
-import logging
 import pickle
+import torch
 import os
 
 
@@ -58,6 +59,7 @@ class HybridOnline(OVBox):
         self.ssvep_model_path = []
         self.ssvep_keras_model = False
         self.erp_model_file_type = ''
+        self.ssvep_idle_model = None
         self.ssvep_lowPass = 5
         self.ssvep_highPass = 50
         self.ssvep_filterOrder = 6   
@@ -71,7 +73,8 @@ class HybridOnline(OVBox):
         # self.ssvep_frequencies = ['idle', 8.57,6.67,12,5.54]
         # self.ssvep_frequencies = ['idle', 11, 10, 9, 8]
         # self.ssvep_frequencies = ['idle', 10, 9, 8]
-        self.ssvep_frequencies = ['idle', 8, 9, 10, 11]        
+        # self.ssvep_frequencies = ['idle', 8, 9, 10, 11]
+        self.ssvep_frequencies = ['idle', 9, 8, 10, 11]        
         self.ssvep_epochDuration = 4.0
         self.ssvep_samples = 0
         self.ssvep_references = []   
@@ -81,6 +84,13 @@ class HybridOnline(OVBox):
         self.ssvep_correct = 0
         self.ssvep_target = []
         self.ssvep_pred = []
+        self.ssvep_async_dur = 0.6 #.6 # 600 ms
+        self.ssvep_async_slide = .1 # 100 ms
+        self.ssvep_idle_count = 0
+        self.ssvep_idle_preds = []
+        self.ssvep_idle_cmd = []
+        self.ssvep_class_offset = 1
+        self.ssvep_feedback = False
         #
         self.ends = 0
         self.nChunks = 0
@@ -97,6 +107,7 @@ class HybridOnline(OVBox):
     def initialize(self):
         self.fs = int(self.setting["Sample Rate"])
         #
+        # ERP init
         self.erp_stimulation = str(self.setting['ERP Stimulation'])
         self.erp_lowPass = int(self.setting["ERP Low Pass"])
         self.erp_highPass = int(self.setting["ERP High Pass"])
@@ -109,6 +120,7 @@ class HybridOnline(OVBox):
         # self.erp_model = pickle.load(open(self.erp_model_path, 'rb')) #py2
         self.erp_model, self.erp_keras_model, self.erp_model_file_type = load_model(self.erp_model_path)
         #
+        # SSVEP init
         self.ssvep_lowPass = int(self.setting["SSVEP Low Pass"])
         self.ssvep_highPass = int(self.setting["SSVEP High Pass"])
         self.ssvep_filterOrder = int(self.setting["SSVEP Filter Order"])
@@ -134,12 +146,25 @@ class HybridOnline(OVBox):
             self.ssvep_references = np.array(x).reshape(len(frequencies), 2*self.ssvep_n_harmonics, self.ssvep_samples)
             # self.ssvep_model = CCA(self.ssvep_n_harmonics, frequencies, self.ssvep_references, int(self.ssvep_epochDuration))
             self.ssvep_model = CCA(self.ssvep_n_harmonics, frequencies, self.ssvep_references, int(dur))
-        elif self.ssvep_mode == 'async' or self.ssvep_mode == 'sync_train':
+        # elif self.ssvep_mode == 'async' or self.ssvep_mode == 'sync_train':
+        else:
             self.ssvep_model, self.ssvep_keras_model, self.ssvep_model_file_type = load_model(self.ssvep_model_path)
-            # self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb'),  encoding='latin1') #py3
-            # self.ssvep_model = pickle.load(open(self.ssvep_model_path, 'rb')) #py2
+            if self.ssvep_mode == "async_dynamic" or self.ssvep_mode == "async_static":
+                ending = 4
+                if self.ssvep_model_path.count("sync") == 2:
+                    ending = 9                
+                if self.ssvep_mode == "async_dynamic":
+                    idlepath = f"{self.ssvep_model_path[:-ending]}_idle.pth"
+                elif self.ssvep_mode == "async_static":
+                    idlepath = f"{self.ssvep_model_path[:-ending]}_idles.pth"                
+           
+                if os.path.exists(idlepath):
+                    self.ssvep_class_offset = 2                
+                    self.ssvep_idle_model = torch.load(idlepath, map_location=torch.device("cpu"))
+                    self.ssvep_idle_model.set_device("cpu")
+                    self.ssvep_idle_model.eval()            
             # generate reference by itcca method
-            self.ssvep_references = self.ssvep_model
+            self.ssvep_references = self.ssvep_model        
 
     def stream_signal(self):
         '''
@@ -196,13 +221,13 @@ class HybridOnline(OVBox):
             # print("SSVEP ep dur ", ep_dur, samples)
                          
         end = int(np.floor(stim.date * self.fs))                           
-        signal = processing.eeg_filter(self.signal[:, begin:end].T, self.fs, low_pass, high_pass, order)         
+        signal = eeg_filter(self.signal[:, begin:end].T, self.fs, low_pass, high_pass, order)         
         
         # ep = np.ceil(np.array([0.1,0.5])*self.fs).astype(int) # FIXME
         # erp_epochs = processing.eeg_epoch(erp_signal,ep , mrk, self.fs)
         
         # epochs = processing.eeg_epoch(signal, np.array([0, samples],dtype=int), mrk, self.fs)
-        epochs = processing.eeg_epoch(signal, ep_dur, mrk, self.fs)
+        epochs = eeg_epoch(signal, ep_dur, mrk, self.fs)
         
         del signal        
         del mrk
@@ -282,16 +307,17 @@ class HybridOnline(OVBox):
             ssvep_epochs = self.ssvep_x.squeeze()
             ssvep_sync_epochs = ssvep_epochs
             
-            ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[0:self.ssvep_samples,:].transpose((1,0))) + 1                                  
+            ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[0:self.ssvep_samples,:].transpose((1,0))) + self.ssvep_class_offset                             
             ssvep_predictions = np.array(ssvep_predictions)
                                 
-        elif self.ssvep_mode == 'async' or self.ssvep_mode == 'sync_train':
+        # elif self.ssvep_mode == 'async' or self.ssvep_mode == 'sync_train':
+        else:
             # ssvep_predictions = self.ssvep_model.predict(ssvep_epochs)
             if self.ssvep_keras_model:
                 if self.ssvep_model_file_type == 'pth':
-                    ssvep_predictions = self.ssvep_model.predict(self.ssvep_x.transpose((2, 1, 0)), normalize=True).argmax() + 1
+                    ssvep_predictions = self.ssvep_model.predict(self.ssvep_x.transpose((2, 1, 0)), normalize=True).argmax() + self.ssvep_class_offset
                 else:
-                    ssvep_predictions = self.ssvep_model.predict(self.ssvep_x.transpose((2, 1, 0))).argmax() + 1
+                    ssvep_predictions = self.ssvep_model.predict(self.ssvep_x.transpose((2, 1, 0))).argmax() + self.ssvep_class_offset
                 # ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0))).argmax() + 1
             else:
                 ssvep_predictions = self.ssvep_model.predict(self.ssvep_x)
@@ -314,13 +340,25 @@ class HybridOnline(OVBox):
         '''
         '''
         print('EXPERIMENT ENDS')
+        self.ssvep_target = np.array(self.ssvep_target, dtype=int)
         if self.mode == 'Copy':
             print(' ERP Accuracy : ', (self.erp_correct / self.n_trials) * 100)
             print(' SSSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)   
             erp_correct = np.array(self.erp_target, dtype=int) == np.array(self.erp_pred, dtype=int)
-            ssvep_correct = np.array(self.ssvep_target, dtype=int) == np.array(self.ssvep_pred, dtype=int)
+            ssvep_correct = self.ssvep_target == np.array(self.ssvep_pred, dtype=int)
             hybrid_acc = np.logical_and(erp_correct, ssvep_correct).mean()*100
             print(' Hybrid Accuracy : ', hybrid_acc)
+        
+        if self.ssvep_mode == "async_dynamic" or self.ssvep_mode == "async_static":
+            self.ssvep_idle_cmd = np.array(self.ssvep_idle_cmd)
+            y_idle = np.zeros_like(self.ssvep_target)
+            y_idle[(self.ssvep_target - 1) != 0] = 1.
+            idle_p = np.zeros_like(self.ssvep_idle_cmd)
+            idle_p[self.ssvep_idle_cmd > .5] = 1. 
+            print(f"Idle accuracy : {accuracy_score(y_idle, idle_p)*100}, AUC :{roc_auc_score(y_idle, idle_p)}")
+            print(f"Idle cm: {confusion_matrix(y_idle, idle_p)}")             
+                      
+
 
         self.switch = False
         del self.signal
@@ -340,7 +378,11 @@ class HybridOnline(OVBox):
         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and self.switch):                       
             print('[ERP trial start]', stim.date)            
             self.ssvep_y = []
-            self.ssvep_stims_time = []                          
+            self.ssvep_stims_time = []
+            self.ssvep_idle_preds = [] 
+            self.ssvep_idle_count = 0 
+            self.ssvep_feedback = False 
+
             if(len(self.erp_stims_time) == 0):
                 self.erp_begin = int(np.floor(stim.date * self.fs))
                         
@@ -373,11 +415,19 @@ class HybridOnline(OVBox):
             self.print_results() 
             self.switch = False
             
+    def async_limit(self):
+        """Test if Trial length reached the duration of 500 (or any async_dur fixed) ms (used for async mode)
+        """
+        if self.ssvep_stims_time:
+            dur = self.signal.shape[1] - self.ssvep_stims_time[-1]  - (self.ssvep_idle_count * int(self.ssvep_async_slide*self.fs) )
+            return dur >= (self.ssvep_async_dur * self.fs)      
 
+    def ssvep_predict_idle(self, ssvep_x):
+        return self.ssvep_idle_model.predict(ssvep_x.transpose((2, 1, 0)), normalize=True)
+    
     def SSVEP_trial(self, stim):
         '''
-        '''      
-
+        '''
         if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart'] and not self.switch): 
             self.erp_stims = []
             self.erp_stims_time = []
@@ -398,17 +448,24 @@ class HybridOnline(OVBox):
             print('[SSVEP trial stop]', stim.date)    
 
             # print('[TRIAL duration:]', stim.date - self.ssvep_stims_time[0] / 512)
-            self.ssvep_x = self.filter_and_epoch('SSVEP', stim)
-            self.ssvep_predict()
+            if self.ssvep_mode == "async_dynamic":
+                self.ssvep_idle_cmd.append(max(self.ssvep_idle_preds)[0])
 
-            print('[SSVEP] Sending as feedback: ', self.command)
-            # speed = ['1', '2', '3', '4']
-            # self.command = random.choice(speed)
-            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.ssvep_feedback_port))                                
-            self.ssvep_pred.append(self.command)
+            if not self.ssvep_feedback:
+                self.ssvep_x = self.filter_and_epoch('SSVEP', stim)
+                self.ssvep_predict()
+                if self.ssvep_mode == "async_static":
+                    idle_p = self.ssvep_predict_idle(self.ssvep_x)                             
+                    if idle_p < .5:
+                        self.command = "1"                                                             
+                    self.ssvep_idle_cmd.append(idle_p[0]) 
+                print('[SSVEP] Sending as feedback: ', self.command)
+                # speed = ['1', '2', '3', '4']
+                # self.command = random.choice(speed)
+                self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.ssvep_feedback_port))                                
+                self.ssvep_pred.append(self.command)
 
-            self.print_if_target('SSVEP')                                    
-            
+            self.print_if_target('SSVEP')                              
             self.switch = True
                        
 
@@ -417,6 +474,30 @@ class HybridOnline(OVBox):
         # stream signal
         if self.input[0]:            
             self.stream_signal()
+
+        # Dynamic SSVEP trial
+        if self.ssvep_mode == 'async_dynamic':
+            if self.async_limit() and self.ssvep_stims_time and not self.switch:
+                self.ssvep_idle_count += 1
+                # filter, epoch, predict                                
+                idle_tmp_end = int(self.ssvep_stims_time[-1] + (self.ssvep_idle_count * int(self.ssvep_async_dur*self.fs)))
+               
+                ssvep_signal = eeg_filter(self.signal[:,self.ssvep_begin:idle_tmp_end].T, self.fs, self.ssvep_lowPass, self.ssvep_highPass, self.ssvep_filterOrder)
+                mrk = np.array(self.ssvep_stims_time, dtype=int) - self.ssvep_begin + int(self.fs* self.ssvep_async_slide*(self.ssvep_idle_count-1))
+                dr =  np.array([0, self.ssvep_async_dur*self.fs], dtype=int)            
+                
+                ssvep_x = eeg_epoch(ssvep_signal, dr, mrk, self.fs)
+                self.ssvep_idle_preds.append(self.ssvep_predict_idle(ssvep_x)[0])      
+                
+                if len(self.ssvep_idle_preds) == 3: # 2 , 3 number of consecutive idle trials
+                    idle_score = max(self.ssvep_idle_preds)
+                    print(f"IDLESCORE : {idle_score}")
+                    if idle_score < 0.5:
+                        self.ssvep_feedback = True
+                        self.feedback_socket.sendto("1".encode(), (self.hostname, self.ssvep_feedback_port))
+                        print("feedback sent")                        
+                        self.ssvep_pred.append(1)
+                        self.command = "1"  
         
         # collect Stimulations markers and times for each paradigm
         if self.input[1]:

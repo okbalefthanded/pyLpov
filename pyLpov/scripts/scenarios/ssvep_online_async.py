@@ -1,4 +1,5 @@
 from __future__ import print_function, division
+from aawedha.utils.utils import log
 from sklearn.metrics import confusion_matrix
 # from pyLpov.proc import processing
 from pyLpov.proc.processing import eeg_filter, eeg_epoch
@@ -6,6 +7,7 @@ from pyLpov.proc.processing import eeg_filter, eeg_epoch
 from baseline.ssvep.cca import CCA
 from pyLpov.io.models import load_model, predict_openvino_model
 from pyLpov.utils.experiment import serialize_experiment, update_experiment_info
+from sklearn.metrics import accuracy_score, roc_auc_score
 # from pyLpov.utils.utils import is_keras_model
 # from tensorflow.keras.models import load_model
 import numpy as np
@@ -14,7 +16,8 @@ import numpy as np
 # import pickle
 import socket
 import random
-# import os
+import torch
+import os
 
 
 # np.set_printoptions(precision=4)
@@ -29,14 +32,16 @@ class SSVEPpredictor(OVBox):
         self.channels = 0
         self.tmp_list = []
         self.n_trials = 0
-        self.model = None
+        self.ssvep_model = None
+        self.idle_model = None
         self.model_path = None
         self.deep_model = False
         self.model_file_type = ''
         # self.frequencies = ['idle', 16, 16.75, 17.25, 18]
         # self.frequencies = ['idle', 9, 9.75, 10.5, 11.25]
         # self.frequencies = ['idle', 9.25, 9.75, 10.25, 10.75]
-        self.frequencies = ['idle', 8, 9, 10, 11]
+        # self.frequencies = ['idle', 8, 9, 10, 11]
+        self.frequencies = ['idle', 9, 8, 10, 11]
         # self.frequencies = ['idle', 8, 9, 10]
         # self.frequencies = ['idle', 10, 9, 8]
         # self.frequencies = ['idle', 11, 10, 9, 8]
@@ -66,6 +71,12 @@ class SSVEPpredictor(OVBox):
         self.fs = 512
         self.samples = 0
         self.references = []
+        self.async_dur = 0.6 # .6 # 600 ms
+        self.async_slide = .1 # 100 ms 
+        self.idle_count = 0
+        self.idle_preds = []
+        self.idle_cmd = []
+        self.class_offset = 1
         #
         self.ends = 0
         self.nChunks = 0
@@ -81,6 +92,8 @@ class SSVEPpredictor(OVBox):
         self.dur  = 0
         self.file_name = ''
         self.is_replay = False
+        #
+        # self.log = log("async_log_stim_dur.log", logger_name="async_online_log")
 
     def initialize(self):
         #
@@ -120,8 +133,24 @@ class SSVEPpredictor(OVBox):
             # self.ssvep_model = CCA(self.harmonics, frequencies, self.references, int(self.epoch_duration))
             self.ssvep_model = CCA(self.harmonics, frequencies, phase=None, references=self.references, length=int(dur))
             
-        elif self.mode == 'async' or self.mode == 'sync_train':
+        # elif self.mode == 'async' or self.mode == 'sync_train':
+        else:
             self.ssvep_model, self.deep_model, self.model_file_type = load_model(self.model_path)
+            # check idle model (binary classification idle vs other_freqs)
+            if self.mode == "async_dynamic" or self.mode == "async_static":
+                ending = 4
+                if self.model_path.count("sync") == 2:
+                    ending = 9                
+                if self.mode == "async_dynamic":
+                    idlepath = f"{self.model_path[:-ending]}_idle.pth"
+                elif self.mode == "async_static":
+                    idlepath = f"{self.model_path[:-ending]}_idles.pth"                
+           
+                if os.path.exists(idlepath):
+                    self.class_offset = 2                
+                    self.idle_model = torch.load(idlepath, map_location=torch.device("cpu"))
+                    self.idle_model.set_device("cpu")
+                    self.idle_model.eval()
             '''
             if is_keras_model(self.model_path):
                 # Keras model
@@ -143,7 +172,7 @@ class SSVEPpredictor(OVBox):
                 'stimuli' : len(self.frequencies),
                 'phrase' : [],
                 'stim_type' : 'Sinusoidal',
-                'frequencies' : self.frequencies,
+                'frequencies' : [str(f) for f in self.frequencies],
                 'control' : self.mode 
                 }
         if not self.is_replay:
@@ -173,7 +202,7 @@ class SSVEPpredictor(OVBox):
         self.ssvep_stims = np.array(self.ssvep_stims)                          
         # self.ssvep_end = int(np.ceil(stim.date * self.fs))
         # self.ssvep_end = np.ceil(stim.date * self.fs).astype(int) 
-        self.ssvep_y = np.array(self.ssvep_y) 
+        # self.ssvep_y = np.array(self.ssvep_y) 
         # mrk = np.array(self.ssvep_stims_time).astype(int) - self.ssvep_begin
         mrk = np.array(self.ssvep_stims_time) - self.ssvep_begin
         
@@ -213,12 +242,14 @@ class SSVEPpredictor(OVBox):
             ssvep_predictions = np.array(self.ssvep_model.predict(self.ssvep_x[0:self.samples, :].transpose((1,0))) + 1)
             # ssvep_predictions = self.ssvep_model.predict(ssvep_sync_epochs[51:self.samples,:].transpose((1,0))) + 1                                  
             # ssvep_predictions = np.array(ssvep_predictions)                      
-        elif self.mode == 'async' or self.mode == 'sync_train':
+        # elif self.mode == 'async' or self.mode == 'sync_train' :
+        # adding more modes: async | sync_train | async_dynamic
+        else:
             if self.deep_model:   
                 if self.model_file_type == 'pth':
-                    ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0)), normalize=True).argmax() + 1
+                    ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0)), normalize=True).argmax() + self.class_offset #1                     
                 else:                
-                    ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0))).argmax() + 1
+                    ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None].transpose((2, 1, 0))).argmax() + self.class_offset # 1
             else:
                 ssvep_predictions = self.ssvep_model.predict(self.ssvep_x[..., None]) + 1
             
@@ -226,11 +257,15 @@ class SSVEPpredictor(OVBox):
 
         self.command = str(ssvep_predictions.item())
 
+    def predict_idle(self, ssvep_x):
+        return self.idle_model.predict(ssvep_x[..., None].transpose((2, 1, 0)), normalize=True)
+
     def print_if_target(self):
         '''
         '''
         if self.experiment_mode == 'Copy':
             print('[SSVEP] preds:', self.command, ' target:', self.ssvep_y)
+            # self.log.debug(f"[SSVEP] preds:, {self.command},  target:, {self.ssvep_y}, idle score: {self.idle_preds}")
             if int(self.command) == self.ssvep_y:
                 self.ssvep_correct += 1
             self.ssvep_target.append(self.ssvep_y[-1])
@@ -242,7 +277,10 @@ class SSVEPpredictor(OVBox):
         self.ssvep_y = []
         self.tmp_list = []
         self.ssvep_stims = []
-        self.ssvep_stims_time = []                     
+        self.ssvep_stims_time = []   
+        self.idle_preds = [] 
+        self.idle_count = 0 
+        self.do_feedback = False                
         self.n_trials += 1
 
     def print_results(self):
@@ -261,9 +299,20 @@ class SSVEPpredictor(OVBox):
             update_experiment_info(self.file_name, "repetition", self.n_trials // len(self.frequencies))
 
         if self.experiment_mode == 'Copy':
+            self.ssvep_target = np.array(self.ssvep_target)
+            if self.mode == "async_dynamic" or self.mode == "async_static":
+                self.idle_cmd = np.array(self.idle_cmd)
+                y_idle = np.zeros_like(self.ssvep_target)
+                y_idle[(self.ssvep_target - 1) != 0] = 1.
+                idle_p = np.zeros_like(self.idle_cmd)
+                idle_p[self.idle_cmd > .5] = 1. 
+                print(f"Idle accuracy : {accuracy_score(y_idle, idle_p)*100} AUC: {roc_auc_score(y_idle, idle_p)}")
+                print(f"Idle cm: {confusion_matrix(y_idle, idle_p)}")             
+                      
             print(' SSVEP Accuracy : ', (self.ssvep_correct / self.n_trials) * 100)
-            cm = confusion_matrix(np.array(self.ssvep_target), np.array(self.ssvep_pred))
+            cm = confusion_matrix(self.ssvep_target, np.array(self.ssvep_pred))
             print('Confusion matrix: ', cm)
+        
         self.switch = False
         del self.signal
         del self.ssvep_x
@@ -272,14 +321,54 @@ class SSVEPpredictor(OVBox):
         print('Trial durations delay: ',  jitter, jitter.min(), jitter.max(), jitter.mean())
         stimSet = OVStimulationSet(0.,0.)    
         stimSet.append(OVStimulation(OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop'], 0., 0.)) 
-        self.output[0].append(stimSet)              
+        self.output[0].append(stimSet)     
+       
+    def async_limit(self):
+        """Test if Trial length reached the duration of 500 (or any async_dur fixed) ms (used for async mode)
+        """
+        # dur = self.signal.shape[1] - self.ssvep_begin
+        if self.ssvep_stims_time:
+            dur = self.signal.shape[1] - self.ssvep_stims_time[-1]  - (self.idle_count * int(self.async_slide*self.fs) )
+            # print(dur, self.signal.shape[1], self.idle_count) # = 307 = 0.6 ms (512 fs)
+            # self.log.debug(f"dur {dur} signal shape {self.signal.shape[1]} idle count {self.idle_count}")
+            self.async_trial = True
+            # return dur >= ( (self.async_dur * self.fs * (self.idle_count+1)) )
+            return dur >= (self.async_dur * self.fs)        
     
     def process(self):
         
         # stream signal
         if self.input[0]:            
-            self.stream_signal()     
-        
+            self.stream_signal()   
+
+        if self.mode == 'async_dynamic':
+            if self.async_limit() and self.ssvep_stims_time:
+                self.idle_count += 1
+                # filter, epoch, predict                               
+                idle_tmp_end = self.ssvep_stims_time[-1] + (self.idle_count * int(self.async_dur*self.fs))
+                ssvep_signal = eeg_filter(self.signal[:,self.ssvep_begin:idle_tmp_end].T, self.fs, self.low_pass, self.high_pass, self.filter_order)
+                mrk = np.array(self.ssvep_stims_time) - self.ssvep_begin + int(self.fs* self.async_slide*(self.idle_count-1))
+                dr =  np.array([0, self.async_dur*self.fs], dtype=int)            
+                
+                ssvep_x = eeg_epoch(ssvep_signal, dr, mrk, self.fs).squeeze()
+                self.idle_preds.append(self.predict_idle(ssvep_x)[0])      
+                
+                if len(self.idle_preds) == 3: # 2 , 3 number of consecutive idle trials
+                    idle_score = max(self.idle_preds)
+                    # print(f"IDLESCORE : {idle_score} {self.idle_preds}")
+                    if idle_score < 0.5:
+                        self.do_feedback = True
+                        self.feedback_socket.sendto("1".encode(), (self.hostname, self.feedback_port))
+                        # print("feedback sent")                        
+                        self.ssvep_pred.append(1)
+                        self.command = "1"
+                '''
+                self.do_feedback = True
+                self.feedback_socket.sendto("1".encode(), (self.hostname, self.feedback_port))                                               
+                self.ssvep_pred.append(1)
+                self.command = "1"
+                self.idle_preds = [[1]]
+                '''
         # collect Stimulations markers and times for each paradigm
         if self.input[1]:
             chunk = self.input[1].pop()
@@ -289,7 +378,8 @@ class SSVEPpredictor(OVBox):
                         stim = chunk.pop()               
                         # print('Received Marker: ', stim.identifier, 'stamped at', stim.date, 's')                        
                         # SSVEP session                        
-                        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):                      
+                        if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStart']):
+                            self.do_feedback = False                       
                             print('[SSVEP trial start]', stim.date)
                             if(len(self.ssvep_stims_time) == 0):
                                 self.tr_dur.append(stim.date)
@@ -297,35 +387,44 @@ class SSVEPpredictor(OVBox):
                                 self.ssvep_begin = int(stim.date * self.fs)
 
                         if (stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_VisualSteadyStateStimulationStart']):
-                                print('[SSVEP Visual_stim_start]', stim.date)
-                                # self.ssvep_stims_time.append(np.floor(stim.date*self.fs).astype(int))
-                                self.ssvep_stims_time.append(int(stim.date*self.fs))
+                            print('[SSVEP Visual_stim_start]', stim.date)
+                            # self.ssvep_stims_time.append(np.floor(stim.date*self.fs).astype(int))
+                            self.ssvep_stims_time.append(int(stim.date*self.fs))
 
                         if (stim.identifier >= OVTK_StimulationLabel_Base) and (stim.identifier <= OVTK_StimulationLabel_Base+len(self.frequencies)):
-                                self.ssvep_y.append(stim.identifier - OVTK_StimulationLabel_Base)
-                                print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
-                                # self.ssvep_stims_time.append(np.floor(stim.date*self.fs).astype(int))                     
+                            self.ssvep_y.append(stim.identifier - OVTK_StimulationLabel_Base)
+                            print('[SSVEP stim]', stim.date, self.ssvep_y[-1])
+                            # self.ssvep_stims_time.append(np.floor(stim.date*self.fs).astype(int))                     
                         
                         if(stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_TrialStop']):                            
-                            
+                            # print(f"[idle count] {self.idle_count}")
+                            self.ssvep_y = np.array(self.ssvep_y) 
                             print('[SSVEP trial stop]', stim.date)
                             print('[Stim duration:]', stim.date - self.ssvep_stims_time[0] / self.fs)
+                            
                             # self.ssvep_end = np.ceil(stim.date * self.fs).astype(int)
-
-                            self.ssvep_end = int(stim.date * self.fs)                             
-                            self.filter_and_epoch(stim)
-                            self.predict()
-                            
-                            # commands = ['1', '2', '3', '4']
-                            # self.command = random.choice(commands)
-                            
-                            print('[SSVEP] Command to send is: ', self.command)
-                            self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.feedback_port))                                                           
-                            self.ssvep_pred.append(int(self.command))
+                            if self.mode == "async_dynamic":
+                                self.idle_cmd.append(max(self.idle_preds)[0])
+                            # async | async_static | sync predict
+                            if not self.do_feedback:
+                                self.ssvep_end = int(stim.date * self.fs)                             
+                                self.filter_and_epoch(stim)
+                                self.predict()
+                                if self.mode == "async_static":
+                                    idle_p = self.predict_idle(self.ssvep_x)                             
+                                    if idle_p < .5:
+                                        self.command = "1"                                                             
+                                    self.idle_cmd.append(idle_p[0])                        
+                                # commands = ['1', '2', '3', '4']
+                                # self.command = random.choice(commands)
+                                # print(f"idle preds: {max(self.idle_preds)}")                                
+                                print('[SSVEP] Command to send is: ', self.command)
+                                self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.feedback_port))                                                           
+                                self.ssvep_pred.append(int(self.command))
                             
                             self.print_if_target()  
                             self.init_data()
-                            # self.print_results()                           
+                            # self.print_results()                                                      
 
                         # Ending Experiment 
                         if stim.identifier == OpenViBE_stimulation['OVTK_StimulationId_ExperimentStop']:
