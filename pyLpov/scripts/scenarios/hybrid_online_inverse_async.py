@@ -29,6 +29,7 @@ class HybridOnline(OVBox):
         self.tmp_list = []
         self.n_trials = 0
         self.tr_dur = []
+        self.command = None
         #
         self.erp_stims = []
         self.erp_stims_time = []
@@ -71,10 +72,13 @@ class HybridOnline(OVBox):
         # self.ssvep_frequencies = ['idle', 9, 9.75, 10.5, 11.25]
         # self.ssvep_frequencies = ['idle', 8.57,6.67,12,5.54]
         # self.ssvep_frequencies = ['idle', 8.57,6.67,12,5.54]
-        # self.ssvep_frequencies = ['idle', 11, 10, 9, 8]
+        # self.ssvep_frequencies = ['idle', 11, 10, 9, 8] # 21-11-2022
         # self.ssvep_frequencies = ['idle', 10, 9, 8]
         # self.ssvep_frequencies = ['idle', 8, 9, 10, 11]
-        self.ssvep_frequencies = ['idle', 9, 8, 10, 11]        
+        # self.ssvep_frequencies = ['idle', 9, 8, 10, 11]
+        # self.ssvep_frequencies = ['idle', 9, 10, 11] # 20-11-2022
+        self.ssvep_frequencies = ['idle', 11, 10.25, 9.5, 8.75, 8] # 23-11-2022
+
         self.ssvep_epochDuration = 4.0
         self.ssvep_samples = 0
         self.ssvep_references = []   
@@ -229,8 +233,8 @@ class HybridOnline(OVBox):
         # epochs = processing.eeg_epoch(signal, np.array([0, samples],dtype=int), mrk, self.fs)
         epochs = eeg_epoch(signal, ep_dur, mrk, self.fs)
         
-        del signal        
-        del mrk
+        # del signal        
+        # del mrk
         
         return epochs #.astype(np.float16)
 
@@ -452,16 +456,16 @@ class HybridOnline(OVBox):
                 self.ssvep_idle_cmd.append(max(self.ssvep_idle_preds)[0])
 
             if not self.ssvep_feedback:
-                self.ssvep_x = self.filter_and_epoch('SSVEP', stim)
-                self.ssvep_predict()
+                # self.ssvep_x = self.filter_and_epoch('SSVEP', stim)
+                # self.ssvep_predict()
                 if self.ssvep_mode == "async_static":
                     idle_p = self.ssvep_predict_idle(self.ssvep_x)                             
                     if idle_p < .5:
                         self.command = "1"                                                             
                     self.ssvep_idle_cmd.append(idle_p[0]) 
-                print('[SSVEP] Sending as feedback: ', self.command)
-                # speed = ['1', '2', '3', '4']
-                # self.command = random.choice(speed)
+                speed = ['1', '2', '3', '4']
+                self.command = random.choice(speed)
+                print('[SSVEP] Sending as feedback: ', self.command)                
                 self.feedback_socket.sendto(self.command.encode(), (self.hostname, self.ssvep_feedback_port))                                
                 self.ssvep_pred.append(self.command)
 

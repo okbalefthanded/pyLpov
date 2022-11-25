@@ -7,7 +7,16 @@ from baseline.ssvep.cca import CCA
 from pyLpov.utils import utils
 from copy import deepcopy
 import numpy as np
-
+from cvzone.SerialModule import SerialObject
+ 
+ 
+command = {
+             '1' : [0,0,0,0,0],
+             '2' : [0,0,1,0,0],
+             '3' : [1,1,1,0,0],
+             '4' : [0,1,1,0,0],
+             '5' : [0,1,1,0,0]
+ }
 # np.set_printoptions(precision=4)
 OVTK_StimulationLabel_Base = 0x00008100
 
@@ -20,7 +29,7 @@ class SSVEPpredictor(OVBox, OnLine):
         # self.frequencies = ['idle', 16, 16.75, 17.25, 18]
         # self.frequencies = ['idle', 9, 9.75, 10.5, 11.25]
         # self.frequencies = ['idle', 9.25, 9.75, 10.25, 10.75]
-        self.frequencies = ['idle', 8, 9, 10, 11]
+        # self.frequencies = ['idle', 8, 9, 10, 11]
         # self.frequencies = ['idle', 8, 9, 10]
         # self.frequencies = ['idle', 10, 9, 8]
         # self.frequencies = ['idle', 11, 10, 9, 8]
@@ -28,6 +37,8 @@ class SSVEPpredictor(OVBox, OnLine):
         # self.frequencies = ['idle', 8.57, 6.67, 12, 5.45]
         # self.frequencies = ['idle', 8, 8.75, 9.5, 10.25]
         # self.frequencies = ['idle', 8.25, 9, 9.75, 10.5]
+        self.frequencies = ['idle', 11, 10.25, 9.5, 8.75, 8] # 23-11-2022
+        self.serial_port = SerialObject("COM19", 9600, 1)
         #
         self.async_trial = False
         self.mode = 'sync'      
@@ -206,6 +217,10 @@ class SSVEPpredictor(OVBox, OnLine):
                             
                             self.decode(stim)                            
                             self.feedback()
+                            #
+                            self.serial_port.sendData(command[self.command])
+                            
+                            # print(command[self.command])
                             self.post_trial()                     
 
                         # Ending Experiment 

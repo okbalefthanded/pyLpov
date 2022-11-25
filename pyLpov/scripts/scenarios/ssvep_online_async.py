@@ -1,5 +1,5 @@
 from __future__ import print_function, division
-from aawedha.utils.utils import log
+# from aawedha.utils.utils import log
 from sklearn.metrics import confusion_matrix
 # from pyLpov.proc import processing
 from pyLpov.proc.processing import eeg_filter, eeg_epoch
